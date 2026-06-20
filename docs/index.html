@@ -1,6 +1,8 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nilmlite — explore NILM datasets &amp; models in the browser</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 <style>
   :root{--acc:#e4634f;--bg:#0c1018;--card:#141a26;--mut:#8b93a4;--line:#222c3d;--ok:#5fbf6f}
@@ -17,17 +19,23 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:18px}
   h2{font-size:19px;margin:0 0 4px}
   .desc{color:var(--mut);font-size:13.5px;margin:0 0 14px}
+  .hint{color:var(--mut);font-size:12px;margin:8px 0 0}
   .controls{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
   .ctl{display:flex;flex-direction:column;gap:5px}
   .ctl label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
-  select{background:#0d1320;color:#eef2f8;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:15px;min-width:200px}
+  select{background:#0d1320;color:#eef2f8;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:15px;min-width:190px}
   button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 20px;font-size:15px;font-weight:700;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
   .badge{display:inline-block;font-size:12px;font-weight:700;color:var(--acc);border:1px solid var(--acc);
     border-radius:999px;padding:2px 10px;margin-left:6px}
-  canvas{width:100%;height:250px;background:#0d1320;border:1px solid var(--line);border-radius:10px;margin-top:14px}
-  .legend{font-size:13px;color:var(--mut);margin-top:8px}
-  .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin:0 5px 0 14px;vertical-align:middle}
+  .uchart{margin-top:14px}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .stat{background:#0d1320;border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13px;color:var(--mut)}
+  .stat b{color:#fff;font-size:16px;display:block;font-variant-numeric:tabular-nums}
+  .shares{margin-top:12px;font-size:13px}
+  .share{display:flex;align-items:center;gap:8px;margin:3px 0}
+  .share .bar{height:9px;border-radius:5px}
+  .share .nm{width:130px;color:var(--mut)} .share .pct{color:#fff;width:48px;text-align:right;font-variant-numeric:tabular-nums}
   .metrics{display:flex;gap:26px;margin-top:14px;flex-wrap:wrap}
   .metric b{display:block;font-size:24px;color:#fff}.metric span{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
   #status{color:var(--mut);font-size:14px;margin-top:10px;min-height:18px}
@@ -37,13 +45,14 @@
   th:nth-child(2),td.name{text-align:left}td.name{font-weight:700}
   tr.top td{background:rgba(228,99,79,.10)}tr.top td.name{color:var(--acc)}
   .mut{color:var(--mut);font-weight:400;font-size:13px}
-  table.mtx{margin-bottom:8px}
-  table.mtx td{color:#fff;text-align:center;border-bottom:2px solid var(--bg)}
+  table.mtx{margin-bottom:8px} table.mtx td{color:#fff;text-align:center;border-bottom:2px solid var(--bg)}
   code{background:#0d1320;padding:2px 6px;border-radius:5px;color:#cbd3e1;font-size:13px}
   .steps{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin-top:6px}
   .steps span{background:#0d1320;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
-  footer{color:var(--mut);font-size:12px;text-align:center;margin-top:24px}
-  footer a{color:var(--acc)}
+  footer{color:var(--mut);font-size:12px;text-align:center;margin-top:24px} footer a{color:var(--acc)}
+  .uplot, .u-legend{color:#cbd3e1;font-size:12px}
+  .u-legend .u-series{cursor:pointer}
+  .u-legend .u-marker{width:12px;height:12px}
 </style></head>
 <body><div class="wrap">
   <h1>nilm<span class="a">lite</span></h1>
@@ -51,39 +60,38 @@
 
   <div class="lead">
     <p><b>What is this?</b> <span class="a">NILM</span> (non-intrusive load monitoring), or <span class="a">energy disaggregation</span>,
-    recovers <b>each appliance's power</b> from a single whole-home smart meter — no per-plug sensors. Useful for energy
-    feedback, demand response, and fault detection.</p>
-    <p><b>The hard part is deployment.</b> A model trained in one home — or one <i>country</i> — has to work in homes it
-    never saw. This page lets you watch that succeed and fail, live.</p>
-    <p><b>How it runs:</b> models are trained in PyTorch on one dataset, exported to <b>ONNX</b>, and executed
-    <b>entirely in your browser</b> via onnxruntime-web — no server, no upload. Data is stored as NILM-Parquet and loaded
-    with <code>nilmlite</code> (pip-only, no Docker). Real datasets: <b>REDD</b> (US), <b>UK-DALE</b> (UK), <b>iAWE</b> (India).</p>
+    recovers <b>each appliance's power</b> from a single whole-home smart meter — no per-plug sensors.</p>
+    <p><b>The hard part is deployment.</b> A model trained in one home — or one <i>country</i> — must work in homes it never saw.
+    This page lets you watch that succeed and fail, live.</p>
+    <p><b>How it runs:</b> models trained in PyTorch, exported to <b>ONNX</b>, executed <b>entirely in your browser</b>
+    (onnxruntime-web) — no server. Data is NILM-Parquet loaded with <code>nilmlite</code> (pip-only, no Docker).
+    Real datasets: <b>REDD</b> (US), <b>UK-DALE</b> (UK), <b>iAWE</b> (India).</p>
     <div class="steps"><span>1 · explore a dataset</span><span>2 · run a model in-browser</span>
       <span>3 · read the generalization matrix</span><span>4 · compare architectures</span></div>
   </div>
 
   <div class="card">
     <h2>1 · Explore a dataset</h2>
-    <p class="desc">The grey fill is the <b>mains</b> (whole-home aggregate) — the only thing a smart meter sees. The
-    coloured lines are the individual appliances we want to recover from it.</p>
+    <p class="desc">Grey fill = <b>mains</b> (all a smart meter sees); coloured lines = the appliances to recover from it.</p>
     <div class="controls"><div class="ctl"><label for="ds">dataset</label><select id="ds"></select></div></div>
-    <canvas id="dsplot"></canvas>
-    <div class="legend" id="dslegend"></div>
+    <div id="dsplot" class="uchart"></div>
+    <p class="hint">🔍 <b>scroll</b> to zoom · <b>drag</b> to pan · <b>double-click</b> to reset · click a legend item to toggle it</p>
+    <div class="stats" id="dsstats"></div>
+    <div class="shares" id="dsshares"></div>
   </div>
 
   <div class="card">
     <h2>2 · Run disaggregation <span class="badge" id="regime">—</span></h2>
-    <p class="desc">Pick an <b>appliance</b> and a <b>model</b> (all trained on the <span id="homename">home</span> dataset),
-    then run it on the dataset above. Green is ground truth, red dashed is the model's prediction — computed in your browser.</p>
+    <p class="desc">Pick an <b>appliance</b> and <b>model</b> (trained on the <span id="homename">home</span> dataset), run it on the dataset above.
+    Green = truth, red dashed = prediction — computed in your browser.</p>
     <div class="controls">
       <div class="ctl"><label for="app">appliance</label><select id="app"></select></div>
       <div class="ctl"><label for="mdl">model</label><select id="mdl"></select></div>
       <button id="run" disabled>Loading…</button>
     </div>
     <div id="status"></div>
-    <canvas id="infplot"></canvas>
-    <div class="legend"><i style="background:#26324a"></i>mains
-      <i style="background:var(--ok)"></i>true <i style="background:var(--acc)"></i>predicted</div>
+    <div id="infplot" class="uchart"></div>
+    <p class="hint">🔍 scroll to zoom · drag to pan · double-click to reset</p>
     <div class="metrics">
       <div class="metric"><b id="m-mae">—</b><span>MAE (W)</span></div>
       <div class="metric"><b id="m-f1">—</b><span>F1</span></div>
@@ -94,16 +102,14 @@
 
   <div class="card">
     <h2>3 · Cross-dataset generalization matrix <span class="mut" id="mxapp">(fridge)</span></h2>
-    <p class="desc">Each model is trained on one dataset (row) and tested on every dataset (column), MAE in watts.
-    <b>Lower = better</b>, colour-scaled green→red. The <b>diagonal</b> is within-dataset; the <b>off-diagonal</b> is
-    cross-dataset — train in one country, test in another. That's where models break.</p>
+    <p class="desc">Train on one dataset (row), test on every dataset (column); MAE in watts, <b>green→red</b>.
+    Diagonal = within-dataset; off-diagonal = cross-dataset (train in one country, test in another) — where models break.</p>
     <div id="matrices"></div>
   </div>
 
   <div class="card">
     <h2>4 · Model zoo <span class="mut">(fridge · trained on <span id="zooredd">REDD</span>)</span></h2>
-    <p class="desc">Four architectures, one harness. They're close within a dataset (cross-building) but diverge
-    cross-dataset — the open research gap. Params shown for scale.</p>
+    <p class="desc">Four architectures, one harness. Close within a dataset; they diverge cross-dataset — the open gap.</p>
     <div id="zoo"></div>
   </div>
 
@@ -117,39 +123,74 @@ let DATA=null; const SESS={};
 const PALETTE=["#5fbf6f","#4f9de4","#e0a93b","#9b6fe0","#46c2c2"];
 ort.env.wasm.wasmPaths="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
 
-function draw(cv, series){
-  const dpr=window.devicePixelRatio||1; cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
-  const ctx=cv.getContext("2d"); ctx.scale(dpr,dpr);
-  const W=cv.clientWidth,H=cv.clientHeight,pad=10;
-  const n=Math.max(...series.map(s=>s.data.length)), max=Math.max(1,...series.flatMap(s=>s.data));
-  const X=i=>pad+(W-2*pad)*i/(n-1), Y=v=>H-pad-(H-2*pad)*v/max;
-  for(const s of series){ ctx.beginPath(); ctx.setLineDash(s.dash||[]);
-    if(s.fill){ ctx.moveTo(X(0),Y(0)); for(let i=0;i<s.data.length;i++) ctx.lineTo(X(i),Y(s.data[i]));
-      ctx.lineTo(X(s.data.length-1),Y(0)); ctx.closePath(); ctx.fillStyle=s.color; ctx.fill(); }
-    else { for(let i=0;i<s.data.length;i++){const x=X(i),y=Y(s.data[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
-      ctx.strokeStyle=s.color; ctx.lineWidth=1.6; ctx.stroke(); } ctx.setLineDash([]); }
+// wheel-zoom + drag-pan + dblclick-reset for uPlot
+function zoomPlugin(){
+  return {hooks:{ready:u=>{
+    let xMin0=u.scales.x.min, xMax0=u.scales.x.max;
+    const over=u.over;
+    over.addEventListener("wheel",e=>{ e.preventDefault();
+      const r=over.getBoundingClientRect(), pct=(e.clientX-r.left)/r.width;
+      const xv=u.posToVal(e.clientX-r.left,"x"), min=u.scales.x.min, max=u.scales.x.max;
+      const nr=(max-min)*(e.deltaY<0?0.82:1/0.82);
+      u.setScale("x",{min:xv-pct*nr,max:xv+(1-pct)*nr});
+    },{passive:false});
+    over.addEventListener("mousedown",e=>{ if(e.button!==0) return;
+      const upp=u.posToVal(1,"x")-u.posToVal(0,"x"), x0=e.clientX, mn=u.scales.x.min, mx=u.scales.x.max;
+      const mv=ev=>{ const d=(ev.clientX-x0)*upp; u.setScale("x",{min:mn-d,max:mx-d}); };
+      const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};
+      document.addEventListener("mousemove",mv); document.addEventListener("mouseup",up);
+    });
+    over.addEventListener("dblclick",()=>u.setScale("x",{min:xMin0,max:xMax0}));
+  }}};
 }
 
+function makeChart(elId, labels, strokes, fills, data){
+  const el=$("#"+elId); if(el._u){el._u.destroy();el._u=null;}
+  const series=[{}].concat(labels.map((l,i)=>({
+    label:l, stroke:strokes[i], width:fills[i]?1:1.6,
+    fill:fills[i]?strokes[i]+"44":undefined, dash:strokes[i]==="dash"?[5,4]:undefined,
+    points:{show:false}})));
+  // fix the dashed pred series (encode via separate flag handled below)
+  const opts={width:el.clientWidth||820, height:250, cursor:{drag:{x:false,y:false}},
+    scales:{x:{time:false}},
+    axes:[{stroke:"#8b93a4",grid:{stroke:"#1c2536"},ticks:{stroke:"#1c2536"},
+           values:(u,v)=>v.map(x=>x.toFixed(0)+"h")},
+          {stroke:"#8b93a4",grid:{stroke:"#1c2536"},ticks:{stroke:"#1c2536"}}],
+    legend:{show:true}, plugins:[zoomPlugin()], series};
+  el._u=new uPlot(opts, data, el);
+  return el._u;
+}
+function hours(n){const p=DATA.period_s||60; return Array.from({length:n},(_,i)=>i*p/3600);}
+
 function showDataset(){
-  const d=DATA.datasets[$("#ds").value];
-  const apps=Object.keys(d.appliances);
-  const series=[{data:d.mains,color:"#26324a",fill:true}].concat(
-    apps.map((a,i)=>({data:d.appliances[a],color:PALETTE[i%PALETTE.length]})));
-  draw($("#dsplot"),series);
-  $("#dslegend").innerHTML='<i style="background:#26324a"></i>mains'+
-    apps.map((a,i)=>`<i style="background:${PALETTE[i%PALETTE.length]}"></i>${a}`).join("");
-  const cross=!$("#ds").value.startsWith("REDD");
-  $("#regime").textContent=cross?"cross-dataset":"cross-building";
+  const d=DATA.datasets[$("#ds").value], apps=Object.keys(d.appliances), n=d.mains.length;
+  const labels=["mains",...apps], strokes=["#3a4a66",...apps.map((a,i)=>PALETTE[i%PALETTE.length])];
+  const fills=[true,...apps.map(()=>false)];
+  const data=[hours(n), d.mains, ...apps.map(a=>d.appliances[a])];
+  const u=makeChart("dsplot",labels,strokes,fills,data);
+  // mark non-mains lines (uPlot fill already only on mains via fills)
+  // stats
+  const s=d.stats||{};
+  $("#dsstats").innerHTML=
+    `<div class="stat"><b>${s.days??"—"}</b>days recorded</div>`+
+    `<div class="stat"><b>${s.buildings??"—"}</b>buildings</div>`+
+    `<div class="stat"><b>${s.period_s??"—"}s</b>sample period</div>`+
+    `<div class="stat"><b>${s.mains_mean??"—"} W</b>avg mains (slice)</div>`+
+    `<div class="stat"><b>${apps.length}</b>appliances</div>`;
+  const sh=s.share||{};
+  $("#dsshares").innerHTML="<div class='mut' style='margin-bottom:4px'>energy share (this slice)</div>"+
+    apps.map((a,i)=>`<div class="share"><span class="nm">${a}</span>
+      <div class="bar" style="width:${Math.max(2,(sh[a]||0)*2.4)}px;background:${PALETTE[i%PALETTE.length]}"></div>
+      <span class="pct">${sh[a]??0}%</span></div>`).join("");
+  $("#regime").textContent=$("#ds").value.startsWith("REDD")?"cross-building":"cross-dataset";
 }
 
 function onAppliance(){
-  const app=$("#app").value;
-  const models=DATA.models[app]||{};
+  const app=$("#app").value, models=DATA.models[app]||{};
   $("#mdl").innerHTML="";
   for(const k of Object.keys(models)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#mdl").appendChild(o);}
   $("#homename").textContent=DATA.home[app]||"home";
-  $("#mxapp").textContent="("+app+")";
-  renderMatrices(app);
+  $("#mxapp").textContent="("+app+")"; renderMatrices(app);
 }
 
 function f1(t,p,thr){let tp=0,fp=0,fn=0;for(let i=0;i<t.length;i++){const a=t[i]>=thr,b=p[i]>=thr;
@@ -159,8 +200,8 @@ function f1(t,p,thr){let tp=0,fp=0,fn=0;for(let i=0;i<t.length;i++){const a=t[i]
 async function predict(model, windows){
   const n=windows.length, win=DATA.window;
   if(model.type==="const") return new Array(n).fill(model.value);
-  if(model.type==="linear"){ const w=model.w, out=new Array(n);
-    for(let i=0;i<n;i++){let s=w[win]; const x=windows[i]; for(let j=0;j<win;j++) s+=x[j]*w[j]; out[i]=Math.max(0,s);} return out; }
+  if(model.type==="linear"){const w=model.w,out=new Array(n);
+    for(let i=0;i<n;i++){let s=w[win];const x=windows[i];for(let j=0;j<win;j++)s+=x[j]*w[j];out[i]=Math.max(0,s);}return out;}
   if(!SESS[model.file]) SESS[model.file]=await ort.InferenceSession.create(model.file,{executionProviders:["wasm"]});
   const flat=new Float32Array(n*win); for(let i=0;i<n;i++) flat.set(windows[i],i*win);
   const o=await SESS[model.file].run({mains_window:new ort.Tensor("float32",flat,[n,win])});
@@ -171,8 +212,7 @@ async function run(){
   $("#run").disabled=true; $("#status").textContent="running…";
   try{
     const d=DATA.datasets[$("#ds").value], app=$("#app").value, win=DATA.window;
-    const model=DATA.models[app][$("#mdl").value];
-    const truth_full=d.appliances[app];
+    const model=DATA.models[app][$("#mdl").value], truth_full=d.appliances[app];
     if(!truth_full){ $("#status").textContent=`'${app}' is not metered in ${$("#ds").value} — pick another dataset/appliance`;
       $("#run").disabled=false; return; }
     const n=d.mains.length-win+1, windows=[];
@@ -180,7 +220,9 @@ async function run(){
     const half=win>>1, truth=truth_full.slice(half,half+n), mainsMid=d.mains.slice(half,half+n);
     const t0=performance.now(); const pred=await predict(model,windows); const dt=performance.now()-t0;
     let mae=0; for(let i=0;i<n;i++) mae+=Math.abs(truth[i]-pred[i]); mae/=n;
-    draw($("#infplot"),[{data:mainsMid,color:"#26324a",fill:true},{data:truth,color:"#5fbf6f"},{data:pred,color:"#e4634f",dash:[5,4]}]);
+    const u=makeChart("infplot",["mains","true","predicted"],["#3a4a66","#5fbf6f","#e4634f"],[true,false,false],
+      [hours(n), mainsMid, truth, pred]);
+    u.series[3].dash=[5,4]; u.redraw();
     $("#m-mae").textContent=mae.toFixed(1); $("#m-f1").textContent=f1(truth,pred,DATA.on_threshold).toFixed(3);
     $("#m-params").textContent=model.params; $("#m-time").textContent=dt.toFixed(0)+" ms";
     const cross=$("#ds").value!==model.trained_on;
@@ -192,7 +234,7 @@ async function run(){
 function heat(v,lo,hi){ if(v==null) return "#1a2030"; const t=hi>lo?(v-lo)/(hi-lo):0; return `hsl(${120*(1-t)},55%,28%)`; }
 function renderMatrices(app){
   const mats=(DATA.matrices||{})[app];
-  if(!mats){ $("#matrices").innerHTML=`<p class="mut">No matrix for ${app} (needs ≥2 datasets with this appliance).</p>`; return; }
+  if(!mats){ $("#matrices").innerHTML=`<p class="mut">No matrix for ${app} (needs ≥2 datasets with it).</p>`; return; }
   $("#matrices").innerHTML=mats.map(mx=>{
     const vals=mx.matrix.flat().filter(v=>v!=null), lo=Math.min(...vals), hi=Math.max(...vals);
     const head=`<tr><th>${mx.model}</th>`+mx.names.map(n=>`<th>→ ${n}</th>`).join("")+`</tr>`;
@@ -210,8 +252,11 @@ function renderZoo(){
   $("#zoo").innerHTML=`<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
 }
 
+window.addEventListener("resize",()=>{ for(const id of ["dsplot","infplot"]){const el=$("#"+id);
+  if(el&&el._u) el._u.setSize({width:el.clientWidth,height:250});}});
+
 (async()=>{
-  DATA=await (await fetch("demo_data.json?v=4")).json();
+  DATA=await (await fetch("demo_data.json?v=5")).json();
   for(const k of Object.keys(DATA.datasets)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#ds").appendChild(o);}
   for(const k of DATA.appliances){const o=document.createElement("option");o.value=k;o.textContent=k;$("#app").appendChild(o);}
   renderZoo(); onAppliance(); showDataset();
