@@ -7,10 +7,12 @@ inference.
 """
 from __future__ import annotations
 
-from . import baselines, convert, evaluate as _evaluate, io, leaderboard, metrics, resample, tasks, viz, windows
+from . import (baselines, convert, evaluate as _evaluate, io, leaderboard, matrix,
+               metrics, resample, tasks, viz, windows)
 from .evaluate import evaluate
 from .io import Dataset, load_building, load_manifest, save_building, save_manifest
 from .leaderboard import leaderboard_html, leaderboard_text
+from .matrix import cross_dataset_matrix, matrix_text
 from .metrics import report
 from .resample import fill_gaps, resample as resample_to
 from .schema import MAINS_COL, TIME_COL, Manifest
@@ -24,6 +26,7 @@ __all__ = [
     "load_building", "save_building", "load_manifest", "save_manifest",
     "resample_to", "fill_gaps", "sliding_windows", "seq2point_xy",
     "evaluate", "leaderboard_html", "leaderboard_text", "report",
+    "cross_dataset_matrix", "matrix_text", "matrix",
     "metrics", "baselines", "convert", "io", "resample", "tasks", "windows", "leaderboard", "viz",
     "TIME_COL", "MAINS_COL", "__version__",
 ]

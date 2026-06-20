@@ -32,13 +32,16 @@ def _series(meter, period):
     return s[~s.index.duplicated(keep="first")].sort_index()
 
 
-def convert(h5: str, out: str, period: int, appliances: list[str], name: str):
+def convert(h5: str, out: str, period: int, appliances: list[str], name: str,
+            only=None):
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     ds = DataSet(h5)
     written, cols_seen = [], set()
 
     for b in ds.buildings:
+        if only and b not in only:
+            continue
         elec = ds.buildings[b].elec
         try:
             cols = {"mains": _series(elec.mains(), period)}
@@ -81,10 +84,12 @@ def main():
     p.add_argument("out")
     p.add_argument("--period", type=int, default=6, help="resample period (s)")
     p.add_argument("--appliances", default=",".join(DEFAULT_APPLIANCES))
+    p.add_argument("--buildings", default="", help="comma list, e.g. 1,2,5 (default: all)")
     p.add_argument("--name", default=None)
     a = p.parse_args()
     apps = [s.strip() for s in a.appliances.split(",") if s.strip()]
-    convert(a.h5, a.out, a.period, apps, a.name or Path(a.h5).stem)
+    only = {int(x) for x in a.buildings.split(",") if x.strip()} or None
+    convert(a.h5, a.out, a.period, apps, a.name or Path(a.h5).stem, only=only)
 
 
 if __name__ == "__main__":
