@@ -14,7 +14,46 @@ import polars as pl
 from .io import save_building, save_manifest
 from .schema import MAINS_COL, TIME_COL, Manifest
 
-__all__ = ["make_synthetic", "write_synthetic_dataset"]
+__all__ = ["make_synthetic", "write_synthetic_dataset", "from_power_csvs"]
+
+
+def from_power_csvs(mapping: dict[str, str | Path], out: str | Path,
+                    period_s: int = 6, name: str = "dataset", building: int = 1,
+                    ts_col: str = "timestamp", power_col: str = "W",
+                    ts_unit: str = "s", source: str = "csv") -> Path:
+    """Ingest per-channel power CSVs into a NILM-Parquet building. No nilmtk/HDF5.
+
+    `mapping` maps a column name to a CSV path, e.g.::
+
+        {"mains": "1.csv", "fridge": "3.csv", "air_conditioner": "4.csv"}
+
+    Each CSV has an epoch-timestamp column and a power column (iAWE-style:
+    timestamp, W, VAR, VA, f, V, PF, A). Channels are resampled to `period_s`,
+    aligned on a common time grid, and written to ``out/building{building}.parquet``.
+    """
+    out = Path(out)
+    merged: pl.DataFrame | None = None
+    for col, path in mapping.items():
+        df = pl.read_csv(path)
+        ts = pl.from_epoch(pl.col(ts_col).cast(pl.Float64).cast(pl.Int64),
+                           time_unit=ts_unit).dt.cast_time_unit("us")
+        chan = (df.select([ts.alias(TIME_COL), pl.col(power_col).cast(pl.Float32).alias(col)])
+                  .drop_nulls(TIME_COL)
+                  .with_columns(pl.col(TIME_COL).dt.truncate(f"{period_s}s"))
+                  .group_by(TIME_COL).agg(pl.col(col).mean()))
+        merged = chan if merged is None else merged.join(chan, on=TIME_COL, how="full", coalesce=True)
+
+    if merged is None:
+        raise ValueError("mapping is empty")
+    value_cols = [c for c in merged.columns if c != TIME_COL]
+    merged = merged.sort(TIME_COL).with_columns([pl.col(c).fill_null(0.0) for c in value_cols])
+
+    appliances = [c for c in value_cols if c != MAINS_COL]
+    save_building(merged, out / f"building{building}.parquet")
+    save_manifest(out, Manifest(name=name, sample_period_s=period_s,
+                                appliances=appliances, buildings=[building],
+                                source=source))
+    return out
 
 
 def make_synthetic(days: int = 30, period_s: int = 6, seed: int = 0,

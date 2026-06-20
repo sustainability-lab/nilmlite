@@ -26,6 +26,16 @@ bench = [
     "tables>=3.9",
     "pyarrow>=15",
 ]
+# Deep models (training) live behind an extra so the core stays tiny.
+dl = [
+    "torch>=2.2",
+    "onnx>=1.16",
+    "onnxscript>=0.1",
+]
+# Portable inference (CPU, for parity checks against the in-browser ONNX run).
+onnx = ["onnxruntime>=1.18"]
+# Plotting helpers.
+viz = ["matplotlib>=3.7"]
 test = ["pytest>=7"]
 
 [project.scripts]
