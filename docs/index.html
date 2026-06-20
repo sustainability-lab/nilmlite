@@ -6,22 +6,26 @@
   :root{--acc:#e4634f;--bg:#0c1018;--card:#141a26;--mut:#8b93a4;--line:#222c3d;--ok:#5fbf6f}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:#eef2f8;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;
-    padding:40px 18px;line-height:1.45}
-  .wrap{max-width:900px;margin:0 auto}
-  h1{font-family:Georgia,serif;font-size:40px;margin:0}
+    padding:40px 18px;line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-family:Georgia,serif;font-size:42px;margin:0}
   h1 .a{color:var(--acc)}
-  .sub{color:var(--mut);margin:6px 0 26px;font-size:16px}
+  .tag{color:var(--mut);margin:6px 0 18px;font-size:16px}
+  .lead{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin-bottom:18px}
+  .lead p{margin:0 0 10px}.lead p:last-child{margin:0}
+  .lead b{color:#fff}.lead .a{color:var(--acc);font-weight:600}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:18px}
-  h2{font-size:18px;margin:0 0 12px}
-  .controls{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+  h2{font-size:19px;margin:0 0 4px}
+  .desc{color:var(--mut);font-size:13.5px;margin:0 0 14px}
+  .controls{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
   .ctl{display:flex;flex-direction:column;gap:5px}
   .ctl label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
-  select{background:#0d1320;color:#eef2f8;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:15px;min-width:230px}
+  select{background:#0d1320;color:#eef2f8;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:15px;min-width:200px}
   button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 20px;font-size:15px;font-weight:700;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
   .badge{display:inline-block;font-size:12px;font-weight:700;color:var(--acc);border:1px solid var(--acc);
-    border-radius:999px;padding:2px 10px;margin-left:8px}
-  canvas{width:100%;height:260px;background:#0d1320;border:1px solid var(--line);border-radius:10px;margin-top:14px}
+    border-radius:999px;padding:2px 10px;margin-left:6px}
+  canvas{width:100%;height:250px;background:#0d1320;border:1px solid var(--line);border-radius:10px;margin-top:14px}
   .legend{font-size:13px;color:var(--mut);margin-top:8px}
   .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin:0 5px 0 14px;vertical-align:middle}
   .metrics{display:flex;gap:26px;margin-top:14px;flex-wrap:wrap}
@@ -30,40 +34,56 @@
   table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;margin-top:6px}
   th,td{text-align:right;padding:8px;border-bottom:1px solid var(--line)}
   th{color:var(--mut);font-size:12px;text-transform:uppercase}
-  th:nth-child(2),td.name{text-align:left}td.name{font-weight:700}td.rank{text-align:center}
+  th:nth-child(2),td.name{text-align:left}td.name{font-weight:700}
   tr.top td{background:rgba(228,99,79,.10)}tr.top td.name{color:var(--acc)}
   .mut{color:var(--mut);font-weight:400;font-size:13px}
   table.mtx{margin-bottom:8px}
   table.mtx td{color:#fff;text-align:center;border-bottom:2px solid var(--bg)}
   code{background:#0d1320;padding:2px 6px;border-radius:5px;color:#cbd3e1;font-size:13px}
+  .steps{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin-top:6px}
+  .steps span{background:#0d1320;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
   footer{color:var(--mut);font-size:12px;text-align:center;margin-top:24px}
   footer a{color:var(--acc)}
 </style></head>
 <body><div class="wrap">
   <h1>nilm<span class="a">lite</span></h1>
-  <p class="sub">A lightweight NILM data layer. Explore datasets and run disaggregation
-  models — all client-side, in your browser. <code>pip install nilmlite</code></p>
+  <p class="tag">A lightweight NILM data layer — explore datasets &amp; run disaggregation models in your browser. <code>pip install nilmlite</code></p>
+
+  <div class="lead">
+    <p><b>What is this?</b> <span class="a">NILM</span> (non-intrusive load monitoring), or <span class="a">energy disaggregation</span>,
+    recovers <b>each appliance's power</b> from a single whole-home smart meter — no per-plug sensors. Useful for energy
+    feedback, demand response, and fault detection.</p>
+    <p><b>The hard part is deployment.</b> A model trained in one home — or one <i>country</i> — has to work in homes it
+    never saw. This page lets you watch that succeed and fail, live.</p>
+    <p><b>How it runs:</b> models are trained in PyTorch on one dataset, exported to <b>ONNX</b>, and executed
+    <b>entirely in your browser</b> via onnxruntime-web — no server, no upload. Data is stored as NILM-Parquet and loaded
+    with <code>nilmlite</code> (pip-only, no Docker). Real datasets: <b>REDD</b> (US), <b>UK-DALE</b> (UK), <b>iAWE</b> (India).</p>
+    <div class="steps"><span>1 · explore a dataset</span><span>2 · run a model in-browser</span>
+      <span>3 · read the generalization matrix</span><span>4 · compare architectures</span></div>
+  </div>
 
   <div class="card">
-    <h2>1 · Pick a dataset</h2>
-    <div class="controls">
-      <div class="ctl"><label for="ds">dataset</label><select id="ds"></select></div>
-    </div>
+    <h2>1 · Explore a dataset</h2>
+    <p class="desc">The grey fill is the <b>mains</b> (whole-home aggregate) — the only thing a smart meter sees. The
+    coloured lines are the individual appliances we want to recover from it.</p>
+    <div class="controls"><div class="ctl"><label for="ds">dataset</label><select id="ds"></select></div></div>
     <canvas id="dsplot"></canvas>
     <div class="legend" id="dslegend"></div>
   </div>
 
   <div class="card">
-    <h2>2 · Pick a model &amp; run inference <span class="badge" id="regime">—</span></h2>
+    <h2>2 · Run disaggregation <span class="badge" id="regime">—</span></h2>
+    <p class="desc">Pick an <b>appliance</b> and a <b>model</b> (all trained on the <span id="homename">home</span> dataset),
+    then run it on the dataset above. Green is ground truth, red dashed is the model's prediction — computed in your browser.</p>
     <div class="controls">
-      <div class="ctl"><label for="mdl">model (trained on REDD · fridge)</label><select id="mdl"></select></div>
+      <div class="ctl"><label for="app">appliance</label><select id="app"></select></div>
+      <div class="ctl"><label for="mdl">model</label><select id="mdl"></select></div>
       <button id="run" disabled>Loading…</button>
     </div>
     <div id="status"></div>
     <canvas id="infplot"></canvas>
     <div class="legend"><i style="background:#26324a"></i>mains
-      <i style="background:var(--ok)"></i>true fridge
-      <i style="background:var(--acc)"></i>predicted</div>
+      <i style="background:var(--ok)"></i>true <i style="background:var(--acc)"></i>predicted</div>
     <div class="metrics">
       <div class="metric"><b id="m-mae">—</b><span>MAE (W)</span></div>
       <div class="metric"><b id="m-f1">—</b><span>F1</span></div>
@@ -73,71 +93,74 @@
   </div>
 
   <div class="card">
-    <h2>Cross-dataset generalization matrix <span class="mut">(fridge · MAE W · train ↓ / test →)</span></h2>
-    <p class="mut" style="margin:0 0 12px">Lower = better. Diagonal is within-dataset; off-diagonal is cross-dataset — where models break.</p>
+    <h2>3 · Cross-dataset generalization matrix <span class="mut" id="mxapp">(fridge)</span></h2>
+    <p class="desc">Each model is trained on one dataset (row) and tested on every dataset (column), MAE in watts.
+    <b>Lower = better</b>, colour-scaled green→red. The <b>diagonal</b> is within-dataset; the <b>off-diagonal</b> is
+    cross-dataset — train in one country, test in another. That's where models break.</p>
     <div id="matrices"></div>
   </div>
 
   <div class="card">
-    <h2>Model zoo <span class="mut">(fridge · trained on <span id="zooredd">REDD</span> · ONNX)</span></h2>
-    <p class="mut" style="margin:0 0 12px">Same harness, four architectures. Cross-building stays low; cross-dataset is the open gap.</p>
+    <h2>4 · Model zoo <span class="mut">(fridge · trained on <span id="zooredd">REDD</span>)</span></h2>
+    <p class="desc">Four architectures, one harness. They're close within a dataset (cross-building) but diverge
+    cross-dataset — the open research gap. Params shown for scale.</p>
     <div id="zoo"></div>
   </div>
 
   <footer><a href="https://github.com/sustainability-lab/nilmlite">github.com/sustainability-lab/nilmlite</a>
-    — pip-installable, no Docker</footer>
+    — pip-installable, no Docker · ONNX models run client-side</footer>
 </div>
 
 <script>
 const $=s=>document.querySelector(s);
 let DATA=null; const SESS={};
 const PALETTE=["#5fbf6f","#4f9de4","#e0a93b","#9b6fe0","#46c2c2"];
-const ORT_CDN="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
-ort.env.wasm.wasmPaths=ORT_CDN;   // load ORT's .wasm backend from the CDN
+ort.env.wasm.wasmPaths="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
 
 function draw(cv, series){
   const dpr=window.devicePixelRatio||1; cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
   const ctx=cv.getContext("2d"); ctx.scale(dpr,dpr);
   const W=cv.clientWidth,H=cv.clientHeight,pad=10;
-  const n=Math.max(...series.map(s=>s.data.length));
-  const max=Math.max(1,...series.flatMap(s=>s.data));
+  const n=Math.max(...series.map(s=>s.data.length)), max=Math.max(1,...series.flatMap(s=>s.data));
   const X=i=>pad+(W-2*pad)*i/(n-1), Y=v=>H-pad-(H-2*pad)*v/max;
-  for(const s of series){
-    ctx.beginPath(); ctx.setLineDash(s.dash||[]);
-    if(s.fill){ ctx.moveTo(X(0),Y(0));
-      for(let i=0;i<s.data.length;i++) ctx.lineTo(X(i),Y(s.data[i]));
-      ctx.lineTo(X(s.data.length-1),Y(0)); ctx.closePath(); ctx.fillStyle=s.color; ctx.fill();
-    } else {
-      for(let i=0;i<s.data.length;i++){const x=X(i),y=Y(s.data[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
-      ctx.strokeStyle=s.color; ctx.lineWidth=1.6; ctx.stroke();
-    }
-    ctx.setLineDash([]);
-  }
+  for(const s of series){ ctx.beginPath(); ctx.setLineDash(s.dash||[]);
+    if(s.fill){ ctx.moveTo(X(0),Y(0)); for(let i=0;i<s.data.length;i++) ctx.lineTo(X(i),Y(s.data[i]));
+      ctx.lineTo(X(s.data.length-1),Y(0)); ctx.closePath(); ctx.fillStyle=s.color; ctx.fill(); }
+    else { for(let i=0;i<s.data.length;i++){const x=X(i),y=Y(s.data[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+      ctx.strokeStyle=s.color; ctx.lineWidth=1.6; ctx.stroke(); } ctx.setLineDash([]); }
 }
 
 function showDataset(){
   const d=DATA.datasets[$("#ds").value];
-  const series=[{data:d.mains,color:"#26324a",fill:true}];
   const apps=Object.keys(d.appliances);
-  apps.forEach((a,i)=>series.push({data:d.appliances[a],color:PALETTE[i%PALETTE.length]}));
+  const series=[{data:d.mains,color:"#26324a",fill:true}].concat(
+    apps.map((a,i)=>({data:d.appliances[a],color:PALETTE[i%PALETTE.length]})));
   draw($("#dsplot"),series);
   $("#dslegend").innerHTML='<i style="background:#26324a"></i>mains'+
     apps.map((a,i)=>`<i style="background:${PALETTE[i%PALETTE.length]}"></i>${a}`).join("");
-  const cross = !$("#ds").value.startsWith("REDD");
-  $("#regime").textContent = cross ? "cross-dataset" : "cross-building";
+  const cross=!$("#ds").value.startsWith("REDD");
+  $("#regime").textContent=cross?"cross-dataset":"cross-building";
+}
+
+function onAppliance(){
+  const app=$("#app").value;
+  const models=DATA.models[app]||{};
+  $("#mdl").innerHTML="";
+  for(const k of Object.keys(models)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#mdl").appendChild(o);}
+  $("#homename").textContent=DATA.home[app]||"home";
+  $("#mxapp").textContent="("+app+")";
+  renderMatrices(app);
 }
 
 function f1(t,p,thr){let tp=0,fp=0,fn=0;for(let i=0;i<t.length;i++){const a=t[i]>=thr,b=p[i]>=thr;
   if(a&&b)tp++;else if(!a&&b)fp++;else if(a&&!b)fn++;} const pr=tp/(tp+fp||1),rc=tp/(tp+fn||1);
   return (2*pr*rc)/((pr+rc)||1);}
 
-async function predict(model, windows){   // windows: Array of Float32Array(win)
+async function predict(model, windows){
   const n=windows.length, win=DATA.window;
   if(model.type==="const") return new Array(n).fill(model.value);
   if(model.type==="linear"){ const w=model.w, out=new Array(n);
-    for(let i=0;i<n;i++){let s=w[win]; const x=windows[i]; for(let j=0;j<win;j++) s+=x[j]*w[j]; out[i]=Math.max(0,s);}
-    return out; }
-  // onnx
+    for(let i=0;i<n;i++){let s=w[win]; const x=windows[i]; for(let j=0;j<win;j++) s+=x[j]*w[j]; out[i]=Math.max(0,s);} return out; }
   if(!SESS[model.file]) SESS[model.file]=await ort.InferenceSession.create(model.file,{executionProviders:["wasm"]});
   const flat=new Float32Array(n*win); for(let i=0;i<n;i++) flat.set(windows[i],i*win);
   const o=await SESS[model.file].run({mains_window:new ort.Tensor("float32",flat,[n,win])});
@@ -147,31 +170,30 @@ async function predict(model, windows){   // windows: Array of Float32Array(win)
 async function run(){
   $("#run").disabled=true; $("#status").textContent="running…";
   try{
-  const d=DATA.datasets[$("#ds").value], model=DATA.models[$("#mdl").value], win=DATA.window;
-  const app=model.appliance, truth_full=d.appliances[app];
-  if(!truth_full){ $("#status").textContent=`'${app}' not in this dataset`; $("#run").disabled=false; return; }
-  const n=d.mains.length-win+1, windows=[];
-  for(let i=0;i<n;i++) windows.push(Float32Array.from(d.mains.slice(i,i+win)));
-  const half=win>>1, truth=truth_full.slice(half,half+n), mainsMid=d.mains.slice(half,half+n);
-  const t0=performance.now(); const pred=await predict(model,windows); const dt=performance.now()-t0;
-  let mae=0; for(let i=0;i<n;i++) mae+=Math.abs(truth[i]-pred[i]); mae/=n;
-  draw($("#infplot"),[{data:mainsMid,color:"#26324a",fill:true},
-    {data:truth,color:"#5fbf6f"},{data:pred,color:"#e4634f",dash:[5,4]}]);
-  $("#m-mae").textContent=mae.toFixed(1);
-  $("#m-f1").textContent=f1(truth,pred,DATA.on_threshold).toFixed(3);
-  $("#m-params").textContent=model.params;
-  $("#m-time").textContent=dt.toFixed(0)+" ms";
-  const cross=!$("#ds").value.startsWith("REDD");
-  $("#status").textContent=`${model.type==="onnx"?"deep model":"model"} trained on ${model.trained_on}, `+
-    `run in-browser on ${$("#ds").value} — ${cross?"cross-dataset":"cross-building"}`;
+    const d=DATA.datasets[$("#ds").value], app=$("#app").value, win=DATA.window;
+    const model=DATA.models[app][$("#mdl").value];
+    const truth_full=d.appliances[app];
+    if(!truth_full){ $("#status").textContent=`'${app}' is not metered in ${$("#ds").value} — pick another dataset/appliance`;
+      $("#run").disabled=false; return; }
+    const n=d.mains.length-win+1, windows=[];
+    for(let i=0;i<n;i++) windows.push(Float32Array.from(d.mains.slice(i,i+win)));
+    const half=win>>1, truth=truth_full.slice(half,half+n), mainsMid=d.mains.slice(half,half+n);
+    const t0=performance.now(); const pred=await predict(model,windows); const dt=performance.now()-t0;
+    let mae=0; for(let i=0;i<n;i++) mae+=Math.abs(truth[i]-pred[i]); mae/=n;
+    draw($("#infplot"),[{data:mainsMid,color:"#26324a",fill:true},{data:truth,color:"#5fbf6f"},{data:pred,color:"#e4634f",dash:[5,4]}]);
+    $("#m-mae").textContent=mae.toFixed(1); $("#m-f1").textContent=f1(truth,pred,DATA.on_threshold).toFixed(3);
+    $("#m-params").textContent=model.params; $("#m-time").textContent=dt.toFixed(0)+" ms";
+    const cross=$("#ds").value!==model.trained_on;
+    $("#status").textContent=`${app} · trained on ${model.trained_on}, run in-browser on ${$("#ds").value} — ${cross?"cross-dataset":"cross-building"}`;
   }catch(e){ $("#status").textContent="error: "+e; console.error(e); }
   $("#run").disabled=false;
 }
 
-function heat(v,lo,hi){ if(v==null) return "#1a2030";
-  const t=hi>lo?(v-lo)/(hi-lo):0; return `hsl(${120*(1-t)},55%,28%)`; }
-function renderMatrices(){
-  $("#matrices").innerHTML=DATA.matrices.map(mx=>{
+function heat(v,lo,hi){ if(v==null) return "#1a2030"; const t=hi>lo?(v-lo)/(hi-lo):0; return `hsl(${120*(1-t)},55%,28%)`; }
+function renderMatrices(app){
+  const mats=(DATA.matrices||{})[app];
+  if(!mats){ $("#matrices").innerHTML=`<p class="mut">No matrix for ${app} (needs ≥2 datasets with this appliance).</p>`; return; }
+  $("#matrices").innerHTML=mats.map(mx=>{
     const vals=mx.matrix.flat().filter(v=>v!=null), lo=Math.min(...vals), hi=Math.max(...vals);
     const head=`<tr><th>${mx.model}</th>`+mx.names.map(n=>`<th>→ ${n}</th>`).join("")+`</tr>`;
     const rows=mx.names.map((n,i)=>`<tr><td class="name">${n}</td>`+
@@ -189,11 +211,12 @@ function renderZoo(){
 }
 
 (async()=>{
-  DATA=await (await fetch("demo_data.json?v=3")).json();
+  DATA=await (await fetch("demo_data.json?v=4")).json();
   for(const k of Object.keys(DATA.datasets)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#ds").appendChild(o);}
-  for(const k of Object.keys(DATA.models)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#mdl").appendChild(o);}
-  renderMatrices(); renderZoo(); showDataset();
+  for(const k of DATA.appliances){const o=document.createElement("option");o.value=k;o.textContent=k;$("#app").appendChild(o);}
+  renderZoo(); onAppliance(); showDataset();
   $("#ds").addEventListener("change",showDataset);
+  $("#app").addEventListener("change",onAppliance);
   $("#run").addEventListener("click",run);
   $("#run").disabled=false; $("#run").textContent="▶ Run inference";
   $("#status").textContent="ready";
