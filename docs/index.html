@@ -189,7 +189,7 @@ function renderZoo(){
 }
 
 (async()=>{
-  DATA=await (await fetch("demo_data.json?v=2")).json();
+  DATA=await (await fetch("demo_data.json?v=3")).json();
   for(const k of Object.keys(DATA.datasets)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#ds").appendChild(o);}
   for(const k of Object.keys(DATA.models)){const o=document.createElement("option");o.value=k;o.textContent=k;$("#mdl").appendChild(o);}
   renderMatrices(); renderZoo(); showDataset();
