@@ -1,9 +1,10 @@
-"""Build the GitHub Pages demo payload from the cross-dataset run's ONNX.
+"""Build the GitHub Pages explorer payload (docs/demo_data.json) + copy the ONNX.
 
-Reuses data/iawe_out/seq2point_fridge_redd.onnx (no retraining): computes the
-leaderboard (Mean/Linear via fit, Seq2Point via ONNX inference) and extracts a
-contiguous iAWE mains slice for in-browser inference. Writes docs/demo_data.json
-and copies the ONNX into docs/.
+Produces, with NO Seq2Point retraining (reuses data/iawe_out/seq2point_fridge_redd.onnx):
+  * dataset slices (mains + appliances) for in-browser viz
+  * runnable fridge models: Seq2Point (ONNX), Linear (weights), Mean (constant)
+  * an honest leaderboard (cross-building vs cross-dataset)
+All models are trained on REDD; the page lets you test them on REDD or iAWE.
 """
 import json
 import shutil
@@ -18,9 +19,8 @@ from nilmlite.baselines import Linear, Mean
 from nilmlite.evaluate import build_xy
 
 W = 99
-OUT = Path("data/iawe_out")
 DOCS = Path("docs")
-ONNX = OUT / "seq2point_fridge_redd.onnx"
+ONNX = Path("data/iawe_out/seq2point_fridge_redd.onnx")
 
 t2 = nl.Task(name="cross-building (REDD)", kind="cross_building", appliances=["fridge"],
              train=[nl.Split("data/redd", 1), nl.Split("data/redd", 2)],
@@ -30,68 +30,85 @@ t3 = nl.Task(name="cross-dataset (REDD → iAWE)", kind="cross_dataset", applian
              test=[nl.Split("data/iawe", 1)], window=W)
 
 
-def n_params(p):
+def fmt(p):
+    return f"{p/1e6:.1f}M" if p >= 1e6 else (f"{p/1e3:.0f}K" if p >= 1e3 else str(int(p)))
+
+
+def n_params_onnx(p):
     m = onnx.load(str(p))
     return int(sum(int(np.prod(i.dims)) for i in m.graph.initializer))
 
 
-def fmt(p):
-    return f"{p/1e6:.1f}M" if p >= 1e6 else (f"{p/1e3:.0f}K" if p >= 1e3 else str(p))
+def active_slice(df, key, L=1000):
+    """Contiguous slice (length L) richest in `key` activity."""
+    a = df[key].to_numpy().astype(float)
+    best_s, best = 0, -1
+    for s in range(0, max(1, len(a) - L), 120):
+        sc = int((a[s + W // 2: s + W // 2 + (L - W + 1)] > 15).sum())
+        if sc > best:
+            best, best_s = sc, s
+    return best_s, min(L, len(a) - best_s)
 
 
+def pack_dataset(path, building, appliances, label, L=1000):
+    df = nl.resample_to(nl.Dataset(path).load(building), 60)
+    appliances = [a for a in appliances if a in df.columns]
+    s, L = active_slice(df, "fridge", L)
+    out = {"mains": np.round(df["mains"].to_numpy()[s:s + L], 1).tolist(),
+           "appliances": {a: np.round(df[a].to_numpy()[s:s + L], 1).tolist() for a in appliances}}
+    return label, out
+
+
+# ---- models (all trained on REDD fridge) ----
+Xtr, ytr = build_xy(t3, t3.train, "fridge")
+mean_model = Mean().fit(Xtr, ytr)
+lin = Linear(l2=5.0).fit(Xtr, ytr)
+PARAMS = n_params_onnx(ONNX)
+models = {
+    "Seq2Point  ·  deep (ONNX)": {"type": "onnx", "file": ONNX.name,
+                                  "appliance": "fridge", "params": fmt(PARAMS), "trained_on": "REDD"},
+    "Linear  ·  ridge": {"type": "linear", "w": np.round(lin.w_, 5).tolist(),
+                         "appliance": "fridge", "params": fmt(lin.n_params), "trained_on": "REDD"},
+    "Mean  ·  constant": {"type": "const", "value": round(float(mean_model.value_), 2),
+                          "appliance": "fridge", "params": "1", "trained_on": "REDD"},
+}
+
+# ---- leaderboard (honest) ----
 sess = ort.InferenceSession(str(ONNX), providers=["CPUExecutionProvider"])
 s2p = lambda X: sess.run(["power"], {"mains_window": X.astype(np.float32)})[0].ravel()
-PARAMS = n_params(ONNX)
-
 boards, s2p_mae = [], {}
 for t in (t2, t3):
-    Xtr, ytr = build_xy(t, t.train, "fridge")
-    Xte, yte = build_xy(t, t.test, "fridge")
+    Xa, ya = build_xy(t, t.train, "fridge")
+    Xe, ye = build_xy(t, t.test, "fridge")
     rows = []
-    for name, mk in [("Mean", Mean), ("Linear", lambda: Linear(l2=5.0))]:
-        m = mk().fit(Xtr, ytr); p = m.predict(Xte)
-        rows.append({"name": name, "mae": nl.metrics.mae(yte, p),
-                     "f1": float(nl.metrics.f1(yte, p)), "params": m.n_params})
-    p = s2p(Xte)
-    s2p_mae[t.kind] = nl.metrics.mae(yte, p)
-    rows.append({"name": "Seq2Point", "mae": nl.metrics.mae(yte, p),
-                 "f1": float(nl.metrics.f1(yte, p)), "params": PARAMS})
+    for nm, mk in [("Mean", Mean), ("Linear", lambda: Linear(l2=5.0))]:
+        m = mk().fit(Xa, ya); p = m.predict(Xe)
+        rows.append({"name": nm, "mae": round(nl.metrics.mae(ye, p), 2),
+                     "f1": round(float(nl.metrics.f1(ye, p)), 3), "params": fmt(m.n_params)})
+    p = s2p(Xe); s2p_mae[t.kind] = nl.metrics.mae(ye, p)
+    rows.append({"name": "Seq2Point", "mae": round(s2p_mae[t.kind], 2),
+                 "f1": round(float(nl.metrics.f1(ye, p)), 3), "params": fmt(PARAMS)})
     rows.sort(key=lambda r: r["mae"])
-    for r in rows:
-        r["params"] = fmt(r["params"]); r["mae"] = round(r["mae"], 2); r["f1"] = round(r["f1"], 3)
     boards.append({"title": t.name, "kind": t.kind, "models": rows})
 
 a, b = s2p_mae["cross_building"], s2p_mae["cross_dataset"]
-gap = (f"<b>Seq2Point</b> degrades <b>{a:.1f} W → {b:.1f} W</b> "
-       f"({(b-a)/a*100:+.0f}%) going from a new <i>home</i> to a new <i>dataset</i> "
-       f"(US → India). Cross-dataset generalization is the open problem.")
+gap = (f"Seq2Point wins <i>within</i> REDD (<b>{a:.1f} W</b>) but cross-dataset on iAWE it "
+       f"degrades to <b>{b:.1f} W</b> — worse than the Mean baseline. "
+       f"Cross-dataset generalization (US → India) is unsolved.")
 
-# --- contiguous iAWE slice with fridge activity for the live demo ---
-iawe = nl.resample_to(nl.Dataset("data/iawe").load(1), 60)
-mains = iawe["mains"].to_numpy().astype(float)
-fridge = iawe["fridge"].to_numpy().astype(float)
-L = 1200
-best_s, best = 0, -1
-for s in range(0, len(mains) - L, 150):
-    score = int((fridge[s + W // 2: s + W // 2 + (L - W + 1)] > 15).sum())
-    if score > best:
-        best, best_s = score, s
-s = best_s
-mains_1d = np.round(mains[s:s + L], 1)
-true_mid = np.round(fridge[s + W // 2: s + W // 2 + (L - W + 1)], 1)
+datasets = dict([
+    pack_dataset("data/redd", 3, ["fridge", "microwave", "dish_washer"], "REDD · home 3 (US)"),
+    pack_dataset("data/redd", 1, ["fridge", "microwave", "dish_washer"], "REDD · home 1 (US)"),
+    pack_dataset("data/iawe", 1, ["fridge", "air_conditioner", "washing_machine"], "iAWE · Delhi home (India)"),
+])
 
-payload = {
-    "window": W, "on_threshold": 15.0,
-    "trained_on": "REDD (US homes)", "tested_on": "iAWE (Delhi home)",
-    "onnx": ONNX.name, "params_str": fmt(PARAMS),
-    "mains_1d": mains_1d.tolist(), "true_mid": true_mid.tolist(),
-    "boards": boards, "gap": gap,
-}
 DOCS.mkdir(exist_ok=True)
 shutil.copy(ONNX, DOCS / ONNX.name)
+payload = {"window": W, "on_threshold": 15.0, "datasets": datasets,
+           "models": models, "boards": boards, "gap": gap}
 (DOCS / "demo_data.json").write_text(json.dumps(payload))
-kb = (DOCS / "demo_data.json").stat().st_size / 1e3
-print(f"wrote docs/demo_data.json ({kb:.0f} KB), copied {ONNX.name} ({(DOCS/ONNX.name).stat().st_size/1e3:.0f} KB)")
-print("gap:", gap.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", ""))
+print(f"wrote docs/demo_data.json ({(DOCS/'demo_data.json').stat().st_size/1e3:.0f} KB)")
+print("datasets:", list(datasets))
+print("models:", list(models))
 for bd in boards:
-    print(" ", bd["kind"], "->", [(m["name"], m["mae"]) for m in bd["models"]])
+    print(" ", bd["kind"], [(m["name"], m["mae"]) for m in bd["models"]])
