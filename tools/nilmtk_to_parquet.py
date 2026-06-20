@@ -19,9 +19,12 @@ import numpy as np
 import pandas as pd
 from nilmtk import DataSet
 
-# nilmtk appliance label -> clean column name
+# nilmtk appliance label -> clean column name (spaces -> underscores by default)
 DEFAULT_APPLIANCES = ["fridge", "microwave", "dish washer"]
-COLNAME = {"dish washer": "dish_washer", "washer dryer": "washer_dryer"}
+
+
+def colname(app: str) -> str:
+    return app.strip().replace(" ", "_")
 
 
 def _series(meter, period):
@@ -44,7 +47,7 @@ def convert(h5: str, out: str, period: int, appliances: list[str], name: str):
             continue
         for app in appliances:
             try:
-                cols[COLNAME.get(app, app)] = _series(elec[app], period)
+                cols[colname(app)] = _series(elec[app], period)
             except Exception:
                 pass  # appliance absent in this home
         df = pd.concat(cols, axis=1).dropna(how="all").fillna(0.0)
