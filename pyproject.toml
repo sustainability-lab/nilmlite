@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nilmlite"
+version = "0.0.1"
+description = "Lightweight, dependency-free NILM data layer (Parquet + Polars). A geolibre-inspired alternative to NILMTK's HDF5 stack."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Sustainability Lab, IIT Gandhinagar" }]
+keywords = ["NILM", "energy", "disaggregation", "benchmark", "polars", "parquet"]
+
+# Core install is intentionally tiny: no conda, no Docker, no HDF5/GDAL, no TF/torch.
+# Polars ships its own native Parquet/Arrow engine, so pyarrow is NOT a core dep.
+dependencies = [
+    "polars>=1.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Only needed to reproduce the head-to-head benchmark vs the pandas/PyTables (NILMTK-style) path.
+bench = [
+    "pandas>=2.0",
+    "tables>=3.9",
+    "pyarrow>=15",
+]
+test = ["pytest>=7"]
+
+[project.scripts]
+nilmlite = "nilmlite.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nilmlite"]
