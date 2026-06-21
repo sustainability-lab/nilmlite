@@ -8,3 +8,5 @@ build/
 data/
 !data/.gitkeep
 .DS_Store
+rust/**/target/
+rust/**/pkg/
