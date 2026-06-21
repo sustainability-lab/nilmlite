@@ -86,7 +86,7 @@ class _Base:
                 loss = loss_fn(model(xb), yb)
                 loss.backward()
                 opt.step()
-                run += float(loss); nb += 1
+                run += loss.item(); nb += 1
             if on_epoch is not None:
                 on_epoch(ep + 1, self.epochs, run / max(1, nb))
         model.eval()

@@ -17,7 +17,7 @@ from .resample import resample
 from .schema import MAINS_COL
 from .windows import seq2point_xy
 
-__all__ = ["cross_dataset_matrix", "matrix_text"]
+__all__ = ["cross_dataset_matrix", "matrix_text", "matrix_html"]
 
 
 def _xy(path, building, appliance, period_s, window):
@@ -69,3 +69,21 @@ def matrix_text(result):
         cells = "".join(f"{('—' if v is None else f'{v:.1f}'):>{w+2}}" for v in M[i])
         out.append(f"{n:<{w+2}}{cells}")
     return "\n".join(out)
+
+
+def matrix_html(result):
+    """One cross-dataset matrix as a colour-scaled HTML heatmap table."""
+    names, M = result["names"], result["matrix"]
+    vals = [v for row in M for v in row if v is not None]
+    lo, hi = (min(vals), max(vals)) if vals else (0, 1)
+
+    def cell(v):
+        if v is None:
+            return '<td style="background:#1a2030">—</td>'
+        t = (v - lo) / (hi - lo) if hi > lo else 0
+        return f'<td style="background:hsl({120*(1-t):.0f},55%,28%);color:#fff;text-align:center">{v:.1f}</td>'
+
+    head = f'<tr><th>{result.get("model","")}</th>' + "".join(f"<th>→ {n}</th>" for n in names) + "</tr>"
+    rows = "".join(f'<tr><td style="text-align:left;font-weight:700">{n}</td>'
+                   + "".join(cell(v) for v in M[i]) + "</tr>" for i, n in enumerate(names))
+    return f'<table class="mtx"><thead>{head}</thead><tbody>{rows}</tbody></table>'

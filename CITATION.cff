@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use nilmlite, please cite it."
+title: "nilmlite: a lightweight, reproducible NILM toolkit and cross-dataset benchmark"
+abstract: >-
+  nilmlite is a pip-only, Docker-free toolkit for non-intrusive load monitoring
+  (energy disaggregation). It provides a columnar (Parquet) data layer, a one-time
+  migrator from NILMTK HDF5 datasets, classic and deep disaggregation baselines,
+  a cross-dataset generalization benchmark, and an in-browser no-code studio.
+authors:
+  - family-names: Batra
+    given-names: Nipun
+    affiliation: "IIT Gandhinagar"
+  - name: "Sustainability Lab, IIT Gandhinagar"
+license: MIT
+repository-code: "https://github.com/sustainability-lab/nilmlite"
+url: "https://sustainability-lab.github.io/nilmlite/"
+keywords:
+  - NILM
+  - energy disaggregation
+  - benchmark
+  - reproducibility
+  - PyTorch

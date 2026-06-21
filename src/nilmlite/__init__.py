@@ -7,8 +7,9 @@ inference.
 """
 from __future__ import annotations
 
-from . import (baselines, convert, evaluate as _evaluate, io, leaderboard, matrix,
+from . import (baselines, classic, convert, evaluate as _evaluate, io, leaderboard, matrix,
                metrics, resample, tasks, viz, windows)
+from .classic import CombinatorialOptimization, evaluate_joint
 from .evaluate import evaluate
 from .io import Dataset, load_building, load_manifest, save_building, save_manifest
 from .leaderboard import leaderboard_html, leaderboard_text
@@ -25,8 +26,9 @@ __all__ = [
     "Dataset", "Manifest", "Task", "Split",
     "load_building", "save_building", "load_manifest", "save_manifest",
     "resample_to", "fill_gaps", "sliding_windows", "seq2point_xy",
-    "evaluate", "leaderboard_html", "leaderboard_text", "report",
-    "cross_dataset_matrix", "matrix_text", "matrix",
+    "evaluate", "leaderboard_html", "leaderboard_text",
+    "cross_dataset_matrix", "matrix_text", "matrix", "report",
+    "CombinatorialOptimization", "evaluate_joint", "classic",
     "metrics", "baselines", "convert", "io", "resample", "tasks", "windows", "leaderboard", "viz",
     "TIME_COL", "MAINS_COL", "__version__",
 ]

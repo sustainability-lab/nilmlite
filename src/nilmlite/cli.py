@@ -25,6 +25,14 @@ def _info(args) -> None:
         print(f"  building{b}: {len(df):,} rows  cols={df.columns}")
 
 
+def _bench(args) -> None:
+    from .report import benchmark_report, discover_specs
+    specs = discover_specs(args.data)
+    print(f"datasets: {[s['name'] for s in specs]}")
+    out = benchmark_report(specs, args.appliance, args.out, deep=args.deep)
+    print(f"wrote {out}")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nilmlite", description="lightweight NILM data layer")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -44,6 +52,13 @@ def main(argv=None) -> int:
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("--docs", default="docs")
     sv.set_defaults(func=lambda a: __import__("nilmlite.server", fromlist=["serve"]).serve(a.port, a.docs))
+
+    bn = sub.add_parser("bench", help="cross-dataset generalization HTML report over a folder of datasets")
+    bn.add_argument("--data", default="data", help="folder containing NILM-Parquet dataset dirs")
+    bn.add_argument("--appliance", default="fridge")
+    bn.add_argument("--out", default="benchmark.html")
+    bn.add_argument("--deep", action="store_true", help="also train Seq2Point (needs [dl], slower)")
+    bn.set_defaults(func=_bench)
 
     args = p.parse_args(argv)
     args.func(args)
