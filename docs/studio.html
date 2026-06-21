@@ -79,6 +79,13 @@ async function onnxPred(file,mains,win){ if(!SESS[file]) SESS[file]=await ort.In
   const o=await SESS[file].run({mains_window:new ort.Tensor("float32",flat,[n,win])}); return Array.from(o.power.data); }
 async function api(path,body){ const r=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   const j=await r.json(); if(!r.ok||j.error) throw j.error||("HTTP "+r.status); return j; }
+async function streamTrain(body,onEvent){
+  const r=await fetch(API+"/train",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok) throw "HTTP "+r.status; const reader=r.body.getReader(), dec=new TextDecoder(); let buf="",done=null;
+  while(true){ const {value,done:d}=await reader.read(); if(d) break; buf+=dec.decode(value,{stream:true}); let i;
+    while((i=buf.indexOf("\n"))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+      if(line){ const ev=JSON.parse(line); onEvent(ev); if(ev.type==="done") done=ev; if(ev.type==="error") throw ev.error; } } }
+  return done; }
 
 // ---------- results panel ----------
 function clearResults(){ document.getElementById("results").innerHTML=""; }
@@ -90,6 +97,27 @@ function plotInto(el,series){ const div=document.createElement("div"); div.class
     series:[{},...series.map(s=>({label:s.label,stroke:s.color,width:s.fill?1:1.6,fill:s.fill?s.color+"44":undefined,dash:s.dash,points:{show:false}}))]},data,div); }
 function metricCard(t,pairs){ const c=card(t),m=document.createElement("div"); m.className="metrics";
   m.innerHTML=pairs.map(([k,v])=>`<div class="metric"><b>${v}</b><span>${k}</span></div>`).join(""); c.appendChild(m); }
+function trainCard(ds,app,arch){ const c=card(`⏳ Training ${arch} — ${app} on ${ds}`);
+  const d=document.createElement("div"); d.style.marginTop="4px";
+  d.innerHTML=`<div style="background:#0d1320;border:1px solid var(--line);border-radius:8px;height:16px;overflow:hidden">
+    <div class="pb" style="height:100%;width:0%;background:var(--acc);transition:width .35s"></div></div>
+    <div class="pi" style="margin-top:8px;color:#cbd3e1;font-size:13px;font-variant-numeric:tabular-nums">starting PyTorch…</div>
+    <div class="lc uchart"></div>`; c.appendChild(d);
+  return {c,h:c.querySelector("h3"),bar:d.querySelector(".pb"),info:d.querySelector(".pi"),lc:d.querySelector(".lc"),ep:[],loss:[],u:null,backend:""}; }
+function drawLoss(tc){ if(!tc.u){ tc.u=new uPlot({width:(tc.lc.clientWidth-4)||820,height:120,legend:{show:false},cursor:{drag:{x:false,y:false}},
+    scales:{x:{time:false}},axes:[{stroke:"#8b93a4",grid:{stroke:"#1c2536"}},{stroke:"#8b93a4",grid:{stroke:"#1c2536"}}],
+    series:[{},{label:"loss",stroke:"#e4634f",width:2,points:{show:true,size:5}}]},[tc.ep,tc.loss],tc.lc); }
+  else tc.u.setData([tc.ep,tc.loss]); }
+function updateTrainCard(tc,ev){
+  if(ev.type==="start"){ tc.backend=ev.backend; tc.info.textContent=`backend ${ev.backend.toUpperCase()} · ${ev.windows.toLocaleString()} windows · epoch 0/${ev.total} · starting…`; }
+  else if(ev.type==="epoch"){ tc.bar.style.width=(100*ev.epoch/ev.total).toFixed(0)+"%";
+    const eta=ev.elapsed/ev.epoch*(ev.total-ev.epoch);
+    tc.info.textContent=`epoch ${ev.epoch}/${ev.total} · loss ${ev.loss} · ${ev.elapsed.toFixed(0)}s elapsed · ETA ~${eta.toFixed(0)}s · ${tc.backend.toUpperCase()}`;
+    tc.ep.push(ev.epoch); tc.loss.push(ev.loss); drawLoss(tc); }
+  else if(ev.type==="done"){ tc.bar.style.width="100%"; tc.h.textContent=`✓ Trained ${ev.arch} — ${tc.h.textContent.split('— ')[1]||''}`;
+    tc.info.textContent=`✓ ${ev.params.toLocaleString()} params · ${ev.backend.toUpperCase()} · ${ev.seconds}s total`; }
+  else if(ev.type==="error"){ tc.info.textContent="✗ "+ev.error; } }
+function setBusy(node,on){ node.boxcolor=on?"#e4634f":null; node.color=on?"#3a2420":null; if(GRAPH) GRAPH.setDirtyCanvas(true,true); }
 
 // ---------- nodes ----------
 function combo(n,name,val,values){ n.addWidget("combo",name,val,null,{values}); n.properties[name]=val; }
@@ -129,11 +157,15 @@ async function EXEC(node,cache){
     const half=win>>1,n=pred.length;
     return [{label:`${getW(node,"model")} (pretrained)`,app:s.app,ds:s.ds,mains:s.mains.slice(half,half+n),truth:s.truth?s.truth.slice(half,half+n):null,pred}]; }
   if(t==="nilm/train"){ const s=inData(node,0,cache); if(!s) throw "Train: connect Appliance";
+    if(!s.truth) throw `${s.app} not metered in ${s.ds} — train on a dataset that has it`;
     if(!SERVER) throw "Train needs the PyTorch server — run: nilmlite serve  (then open http://localhost:8000/)";
     log(`training ${getW(node,"arch")} on ${s.ds} · ${s.app} (real PyTorch)…`);
-    const r=await api("/train",{ds:s.ds,app:s.app,arch:getW(node,"arch"),epochs:getW(node,"epochs")});
-    log(`  ✓ ${r.arch} ${r.params.toLocaleString()} params · ${r.backend.toUpperCase()} · ${r.seconds}s`);
-    return [{model_id:r.model_id,arch:r.arch,trained_on:r.trained_on,backend:r.backend}]; }
+    setBusy(node,true); const tc=trainCard(s.ds,s.app,getW(node,"arch")); let done=null;
+    try{ done=await streamTrain({ds:s.ds,app:s.app,arch:getW(node,"arch"),epochs:getW(node,"epochs")},ev=>updateTrainCard(tc,ev)); }
+    finally{ setBusy(node,false); }
+    if(!done) throw "training did not complete";
+    log(`  ✓ ${done.arch} ${done.params.toLocaleString()} params · ${done.backend.toUpperCase()} · ${done.seconds}s`);
+    return [{model_id:done.model_id,arch:done.arch,trained_on:done.trained_on,backend:done.backend}]; }
   if(t==="nilm/predict"){ const h=inData(node,0,cache), s=inData(node,1,cache); if(!h||!s) throw "Predict: connect a trained model + Appliance";
     const r=await api("/predict",{model_id:h.model_id,ds:s.ds,app:s.app});
     return [{label:r.label,app:r.app,ds:r.ds,mains:r.mains,truth:r.truth,pred:r.pred,mae:r.mae,f1:r.f1}]; }
@@ -151,9 +183,10 @@ async function EXEC(node,cache){
     m.innerHTML=`<div class="metric"><b>${am}</b><span>${A.label} MAE</span></div><div class="metric"><b>${bm}</b><span>${B.label} MAE</span></div>`; c.appendChild(m); return []; }
   return [];
 }
-async function runGraph(){ const btn=document.getElementById("runbtn"); btn.disabled=true; document.getElementById("log").textContent=""; clearResults();
+async function runGraph(){ const btn=document.getElementById("runbtn"); btn.disabled=true; btn.textContent="⏳ Running…";
+  document.getElementById("log").textContent=""; clearResults(); document.getElementById("results").scrollIntoView({behavior:"smooth",block:"nearest"});
   try{ const order=GRAPH.computeExecutionOrder(false,true), cache={}; for(const node of order) cache[node.id]=await EXEC(node,cache)||[]; log("✓ pipeline complete"); }
-  catch(e){ log("✗ "+e); console.error(e); } btn.disabled=false; }
+  catch(e){ log("✗ "+e); console.error(e); } btn.disabled=false; btn.textContent="▶ Run"; }
 
 // ---------- samples ----------
 function add(type,x,y,setup){ const n=LiteGraph.createNode(type); n.pos=[x,y]; GRAPH.add(n); if(setup)setup(n); return n; }

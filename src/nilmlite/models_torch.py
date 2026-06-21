@@ -56,7 +56,7 @@ class _Base:
     def build_net(self):                                     # -> nn.Module taking (B, window)
         raise NotImplementedError
 
-    def fit(self, X, y):
+    def fit(self, X, y, on_epoch=None):
         import torch
         torch.manual_seed(self.seed)
         rng = np.random.default_rng(self.seed)
@@ -79,11 +79,16 @@ class _Base:
         dl = torch.utils.data.DataLoader(ds, batch_size=self.batch, shuffle=True)
         opt = torch.optim.Adam(model.parameters(), lr=self.lr)
         loss_fn = torch.nn.MSELoss()
-        for _ in range(self.epochs):
+        for ep in range(self.epochs):
+            run, nb = 0.0, 0
             for xb, yb in dl:
                 opt.zero_grad()
-                loss_fn(model(xb), yb).backward()
+                loss = loss_fn(model(xb), yb)
+                loss.backward()
                 opt.step()
+                run += float(loss); nb += 1
+            if on_epoch is not None:
+                on_epoch(ep + 1, self.epochs, run / max(1, nb))
         model.eval()
         self.model = model
         return self

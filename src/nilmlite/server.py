@@ -81,28 +81,56 @@ class _H(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(n) or "{}")
+        if self.path == "/train":
+            return self._train_stream(body)
         try:
-            if self.path == "/train":
-                return self._send(200, json.dumps(self._train(body)))
             if self.path == "/predict":
                 return self._send(200, json.dumps(self._predict(body)))
         except Exception as e:  # noqa: BLE001
             return self._send(400, json.dumps({"error": str(e)}))
         self._send(404, json.dumps({"error": "unknown route"}))
 
-    def _train(self, b):
-        import torch
-        from nilmlite.models_torch import ZOO
-        ds, app = b["ds"], b["app"]
-        arch, ep = b.get("arch", "Seq2Point"), int(b.get("epochs", 6))
-        Xtr, ytr = _train_xy(ds, app)
+    def _train_stream(self, b):
+        """Stream NDJSON training events: start → epoch* → done (or error)."""
+        try:
+            import torch
+            from nilmlite.models_torch import ZOO
+            ds, app = b["ds"], b["app"]
+            arch, ep = b.get("arch", "Seq2Point"), int(b.get("epochs", 6))
+            Xtr, ytr = _train_xy(ds, app)
+            cap = min(12000, int(len(Xtr)))
+        except Exception as e:  # noqa: BLE001
+            return self._send(400, json.dumps({"error": str(e)}))
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def emit(o):
+            try:
+                self.wfile.write((json.dumps(o) + "\n").encode())
+                self.wfile.flush()
+            except Exception:  # client went away
+                pass
+
+        backend = "cuda" if torch.cuda.is_available() else "cpu"
+        emit({"type": "start", "arch": arch, "ds": ds, "app": app, "total": ep,
+              "backend": backend, "windows": cap})
         t0 = time.time()
-        # cap windows so the studio stays interactive (subsampled, deterministic)
-        model = ZOO[arch](window=W, epochs=ep, max_train=12000).fit(Xtr, ytr)
+        model = ZOO[arch](window=W, epochs=ep, max_train=12000)
+        try:
+            model.fit(Xtr, ytr, on_epoch=lambda e, tot, loss: emit(
+                {"type": "epoch", "epoch": e, "total": tot,
+                 "loss": round(float(loss), 5), "elapsed": round(time.time() - t0, 1)}))
+        except Exception as e:  # noqa: BLE001
+            return emit({"type": "error", "error": str(e)})
         mid = uuid.uuid4().hex[:8]
         MODELS[mid] = {"model": model, "arch": arch, "trained_on": ds}
-        return {"model_id": mid, "params": int(model.n_params), "seconds": round(time.time() - t0, 1),
-                "backend": "cuda" if torch.cuda.is_available() else "cpu", "arch": arch, "trained_on": ds}
+        emit({"type": "done", "model_id": mid, "params": int(model.n_params),
+              "seconds": round(time.time() - t0, 1), "backend": backend,
+              "arch": arch, "trained_on": ds})
 
     def _predict(self, b):
         h = MODELS.get(b["model_id"])
