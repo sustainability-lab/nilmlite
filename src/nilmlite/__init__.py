@@ -19,7 +19,7 @@ from .schema import MAINS_COL, TIME_COL, Manifest
 from .tasks import Split, Task
 from .windows import seq2point_xy, sliding_windows
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "Dataset", "Manifest", "Task", "Split",

@@ -97,8 +97,9 @@ class _H(BaseHTTPRequestHandler):
             from nilmlite.models_torch import ZOO
             ds, app = b["ds"], b["app"]
             arch, ep = b.get("arch", "Seq2Point"), int(b.get("epochs", 6))
+            cap_max = 4000 if b.get("speed") == "quick" else 12000
             Xtr, ytr = _train_xy(ds, app)
-            cap = min(12000, int(len(Xtr)))
+            cap = min(cap_max, int(len(Xtr)))
         except Exception as e:  # noqa: BLE001
             return self._send(400, json.dumps({"error": str(e)}))
 
@@ -108,23 +109,24 @@ class _H(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
 
-        def emit(o):
+        def emit(o, fatal=False):
             try:
                 self.wfile.write((json.dumps(o) + "\n").encode())
                 self.wfile.flush()
-            except Exception:  # client went away
-                pass
+            except Exception:  # client went away (Stop) — abort training if mid-epoch
+                if fatal:
+                    raise RuntimeError("client disconnected")
 
         backend = "cuda" if torch.cuda.is_available() else "cpu"
         emit({"type": "start", "arch": arch, "ds": ds, "app": app, "total": ep,
               "backend": backend, "windows": cap})
         t0 = time.time()
-        model = ZOO[arch](window=W, epochs=ep, max_train=12000)
+        model = ZOO[arch](window=W, epochs=ep, max_train=cap)
         try:
             model.fit(Xtr, ytr, on_epoch=lambda e, tot, loss: emit(
                 {"type": "epoch", "epoch": e, "total": tot,
-                 "loss": round(float(loss), 5), "elapsed": round(time.time() - t0, 1)}))
-        except Exception as e:  # noqa: BLE001
+                 "loss": round(float(loss), 5), "elapsed": round(time.time() - t0, 1)}, fatal=True))
+        except Exception as e:  # noqa: BLE001 (includes Stop)
             return emit({"type": "error", "error": str(e)})
         mid = uuid.uuid4().hex[:8]
         MODELS[mid] = {"model": model, "arch": arch, "trained_on": ds}

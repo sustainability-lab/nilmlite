@@ -56,6 +56,7 @@
     <button class="ghost" onclick="document.getElementById('imp').click()">⤒ Import</button>
     <input id="imp" type="file" accept=".json" style="display:none" onchange="importGraph(this.files[0])">
     <button id="runbtn" onclick="runGraph()">▶ Run</button>
+    <button id="stopbtn" onclick="stopRun()" style="display:none;background:#5a2a22">■ Stop</button>
   </div>
   <canvas id="graph"></canvas>
   <p class="hint">tip: right-click → Add Node → <code>nilm/…</code> · drag output→input to connect · scroll to zoom canvas</p>
@@ -65,7 +66,7 @@
 </div>
 
 <script>
-let DATA=null, GRAPH=null, LGCANVAS=null, SERVER=false;
+let DATA=null, GRAPH=null, LGCANVAS=null, SERVER=false, ABORT=null;
 const API="";   // same origin (nilmlite serve)
 const log=m=>{const l=document.getElementById("log");l.textContent+=m+"\n";l.scrollTop=l.scrollHeight;};
 const dsNames=()=>Object.keys(DATA.datasets), appNames=()=>DATA.appliances;
@@ -80,7 +81,7 @@ async function onnxPred(file,mains,win){ if(!SESS[file]) SESS[file]=await ort.In
 async function api(path,body){ const r=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   const j=await r.json(); if(!r.ok||j.error) throw j.error||("HTTP "+r.status); return j; }
 async function streamTrain(body,onEvent){
-  const r=await fetch(API+"/train",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const r=await fetch(API+"/train",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ABORT?ABORT.signal:undefined});
   if(!r.ok) throw "HTTP "+r.status; const reader=r.body.getReader(), dec=new TextDecoder(); let buf="",done=null;
   while(true){ const {value,done:d}=await reader.read(); if(d) break; buf+=dec.decode(value,{stream:true}); let i;
     while((i=buf.indexOf("\n"))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
@@ -131,7 +132,8 @@ function defineNodes(){
   Pretrained.title="Pretrained (ONNX, in-browser)"; LiteGraph.registerNodeType("nilm/pretrained",Pretrained);
   function Train(){ this.addInput("train","series"); this.addOutput("model","handle"); this.properties={};
     combo(this,"arch","Seq2Point",["Seq2Point","DAE","GRU","PatchTST"]);
-    this.addWidget("number","epochs",6,null,{min:1,max:40,step:1,precision:0}); this.properties.epochs=6; }
+    this.addWidget("number","epochs",6,null,{min:1,max:40,step:1,precision:0}); this.properties.epochs=6;
+    combo(this,"speed","quick",["quick","full"]); }
   Train.title="Train (real PyTorch)"; LiteGraph.registerNodeType("nilm/train",Train);
   function Predict(){ this.addInput("model","handle"); this.addInput("series","series"); this.addOutput("result","result"); this.properties={}; }
   Predict.title="Predict"; LiteGraph.registerNodeType("nilm/predict",Predict);
@@ -161,7 +163,7 @@ async function EXEC(node,cache){
     if(!SERVER) throw "Train needs the PyTorch server — run: nilmlite serve  (then open http://localhost:8000/)";
     log(`training ${getW(node,"arch")} on ${s.ds} · ${s.app} (real PyTorch)…`);
     setBusy(node,true); const tc=trainCard(s.ds,s.app,getW(node,"arch")); let done=null;
-    try{ done=await streamTrain({ds:s.ds,app:s.app,arch:getW(node,"arch"),epochs:getW(node,"epochs")},ev=>updateTrainCard(tc,ev)); }
+    try{ done=await streamTrain({ds:s.ds,app:s.app,arch:getW(node,"arch"),epochs:getW(node,"epochs"),speed:getW(node,"speed")},ev=>updateTrainCard(tc,ev)); }
     finally{ setBusy(node,false); }
     if(!done) throw "training did not complete";
     log(`  ✓ ${done.arch} ${done.params.toLocaleString()} params · ${done.backend.toUpperCase()} · ${done.seconds}s`);
@@ -183,10 +185,13 @@ async function EXEC(node,cache){
     m.innerHTML=`<div class="metric"><b>${am}</b><span>${A.label} MAE</span></div><div class="metric"><b>${bm}</b><span>${B.label} MAE</span></div>`; c.appendChild(m); return []; }
   return [];
 }
-async function runGraph(){ const btn=document.getElementById("runbtn"); btn.disabled=true; btn.textContent="⏳ Running…";
+async function runGraph(){ const btn=document.getElementById("runbtn"), stop=document.getElementById("stopbtn");
+  btn.disabled=true; btn.textContent="⏳ Running…"; stop.style.display="inline-block"; ABORT=new AbortController();
   document.getElementById("log").textContent=""; clearResults(); document.getElementById("results").scrollIntoView({behavior:"smooth",block:"nearest"});
   try{ const order=GRAPH.computeExecutionOrder(false,true), cache={}; for(const node of order) cache[node.id]=await EXEC(node,cache)||[]; log("✓ pipeline complete"); }
-  catch(e){ log("✗ "+e); console.error(e); } btn.disabled=false; btn.textContent="▶ Run"; }
+  catch(e){ const msg=(e&&e.name==="AbortError")?"⏹ stopped":(""+e); log(msg.startsWith("⏹")?msg:"✗ "+msg); console.error(e); }
+  btn.disabled=false; btn.textContent="▶ Run"; stop.style.display="none"; ABORT=null; }
+function stopRun(){ if(ABORT){ log("⏹ stopping after this epoch…"); ABORT.abort(); } }
 
 // ---------- samples ----------
 function add(type,x,y,setup){ const n=LiteGraph.createNode(type); n.pos=[x,y]; GRAPH.add(n); if(setup)setup(n); return n; }
@@ -223,6 +228,6 @@ function importGraph(file){ const r=new FileReader(); r.onload=()=>{GRAPH.config
   }catch(e){ SERVER=false; document.getElementById("pill-srv").textContent="server: off (inference-only)"; }
   document.getElementById("srvnote").innerHTML=SERVER?"":"<b style='color:var(--acc)'>Training is disabled here</b> (static page) — pretrained inference works; start the server to train.";
 })().catch(e=>{document.getElementById("log").textContent="error: "+e;console.error(e);});
-window.loadSample=loadSample;window.runGraph=runGraph;window.exportGraph=exportGraph;window.importGraph=importGraph;
+window.loadSample=loadSample;window.runGraph=runGraph;window.stopRun=stopRun;window.exportGraph=exportGraph;window.importGraph=importGraph;
 </script>
 </body></html>

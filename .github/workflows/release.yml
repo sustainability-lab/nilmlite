@@ -1,0 +1,27 @@
+name: publish
+
+# Tag a release to publish to PyPI:  git tag v0.1.0 && git push --tags
+# One-time setup on PyPI (no secrets needed): add a Trusted Publisher for
+#   project nilmlite · owner sustainability-lab · repo nilmlite · workflow release.yml
+# Alternatively, set a PYPI_API_TOKEN secret and add `with: { password: ${{ secrets.PYPI_API_TOKEN }} }`.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write          # OIDC for PyPI Trusted Publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
