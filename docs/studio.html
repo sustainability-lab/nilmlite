@@ -1,0 +1,195 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nilmlite studio — no-code NILM pipelines</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
+<script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<style>
+  :root{--acc:#e4634f;--bg:#0c1018;--card:#141a26;--mut:#8b93a4;--line:#222c3d;--ok:#5fbf6f}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#eef2f8;font-family:-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;padding:28px 18px;line-height:1.5}
+  .wrap{max-width:1100px;margin:0 auto}
+  a{color:var(--acc)}
+  h1{font-family:Georgia,serif;font-size:34px;margin:0}h1 .a{color:var(--acc)}
+  .tag{color:var(--mut);margin:6px 0 14px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  button{background:var(--acc);color:#fff;border:0;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer}
+  button.ghost{background:#1b2335;color:#cbd3e1;border:1px solid var(--line)}
+  .pill{font-size:12px;color:var(--mut);background:#0d1320;border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+  #pill-srv{border-color:var(--line)}
+  #graph{width:100%;height:460px;background:#0d1320;border:1px solid var(--line);border-radius:12px}
+  .hint{color:var(--mut);font-size:12px;margin:8px 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+  .res{display:grid;grid-template-columns:1fr;gap:14px}
+  .rc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .rc h3{margin:0 0 8px;font-size:15px}
+  .metrics{display:flex;gap:24px;flex-wrap:wrap}
+  .metric b{display:block;font-size:22px;color:#fff}.metric span{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+  .uchart{margin-top:4px}
+  #log{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--mut);white-space:pre-wrap;margin-top:8px;max-height:140px;overflow:auto;background:#0d1320;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .lead{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px;font-size:14px}
+  .lead b{color:#fff} .lead code{background:#0d1320;padding:2px 6px;border-radius:5px;color:#cbd3e1}
+  .uplot,.u-legend{color:#cbd3e1;font-size:12px}
+</style></head>
+<body><div class="wrap">
+  <h1>nilm<span class="a">lite</span> studio</h1>
+  <p class="tag">No-code disaggregation pipelines — load data, run a pretrained model, <b>train one with real PyTorch</b>, compare. <a href="index.html">← explorer</a></p>
+
+  <div class="lead">
+    <b>How it works.</b> Drag nodes (or load a sample), then <b>▶ Run</b>. Pretrained models run in your browser via
+    <b>onnxruntime-web</b> (PyTorch→ONNX). The <b>Train</b> node trains the <i>real</i> nilmlite PyTorch models
+    (Seq2Point / DAE / GRU / PatchTST) on CPU or CUDA — via a local server you start with:
+    <code>pip install "nilmlite[dl]" &amp;&amp; nilmlite serve</code>, then open <code>http://localhost:8000/</code>.
+    The graph serialises to JSON = a <b>reproducible pipeline</b>. <span id="srvnote"></span>
+  </div>
+
+  <div class="bar">
+    <span class="pill">samples:</span>
+    <button class="ghost" onclick="loadSample(1)">① Pretrained inference</button>
+    <button class="ghost" onclick="loadSample(2)">② Train (PyTorch) vs pretrained</button>
+    <button class="ghost" onclick="loadSample(3)">③ Train REDD → test iAWE</button>
+    <span style="flex:1"></span>
+    <span class="pill" id="pill-srv">server: …</span>
+    <button class="ghost" onclick="exportGraph()">⤓ Export</button>
+    <button class="ghost" onclick="document.getElementById('imp').click()">⤒ Import</button>
+    <input id="imp" type="file" accept=".json" style="display:none" onchange="importGraph(this.files[0])">
+    <button id="runbtn" onclick="runGraph()">▶ Run</button>
+  </div>
+  <canvas id="graph"></canvas>
+  <p class="hint">tip: right-click → Add Node → <code>nilm/…</code> · drag output→input to connect · scroll to zoom canvas</p>
+  <div id="log"></div>
+
+  <div class="card"><b>Results</b><div id="results" class="res" style="margin-top:12px"></div></div>
+</div>
+
+<script>
+let DATA=null, GRAPH=null, LGCANVAS=null, SERVER=false;
+const API="";   // same origin (nilmlite serve)
+const log=m=>{const l=document.getElementById("log");l.textContent+=m+"\n";l.scrollTop=l.scrollHeight;};
+const dsNames=()=>Object.keys(DATA.datasets), appNames=()=>DATA.appliances;
+ort.env.wasm.wasmPaths="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+const SESS={};
+
+function mae(t,p){let s=0;for(let i=0;i<t.length;i++)s+=Math.abs(t[i]-p[i]);return s/t.length;}
+function f1(t,p,thr){let tp=0,fp=0,fn=0;for(let i=0;i<t.length;i++){const a=t[i]>=thr,b=p[i]>=thr;if(a&&b)tp++;else if(!a&&b)fp++;else if(a&&!b)fn++;}const pr=tp/(tp+fp||1),rc=tp/(tp+fn||1);return (2*pr*rc)/((pr+rc)||1);}
+async function onnxPred(file,mains,win){ if(!SESS[file]) SESS[file]=await ort.InferenceSession.create(file,{executionProviders:["wasm"]});
+  const n=mains.length-win+1, flat=new Float32Array(n*win); for(let i=0;i<n;i++) for(let j=0;j<win;j++) flat[i*win+j]=mains[i+j];
+  const o=await SESS[file].run({mains_window:new ort.Tensor("float32",flat,[n,win])}); return Array.from(o.power.data); }
+async function api(path,body){ const r=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json(); if(!r.ok||j.error) throw j.error||("HTTP "+r.status); return j; }
+
+// ---------- results panel ----------
+function clearResults(){ document.getElementById("results").innerHTML=""; }
+function card(t){ const d=document.createElement("div"); d.className="rc"; d.innerHTML=`<h3>${t}</h3>`; document.getElementById("results").appendChild(d); return d; }
+function plotInto(el,series){ const div=document.createElement("div"); div.className="uchart"; el.appendChild(div);
+  const n=Math.max(...series.map(s=>s.data.length)), data=[Array.from({length:n},(_,i)=>i),...series.map(s=>s.data)];
+  new uPlot({width:(el.clientWidth-4)||840,height:230,cursor:{drag:{x:true,y:false}},scales:{x:{time:false}},
+    axes:[{stroke:"#8b93a4",grid:{stroke:"#1c2536"}},{stroke:"#8b93a4",grid:{stroke:"#1c2536"}}],
+    series:[{},...series.map(s=>({label:s.label,stroke:s.color,width:s.fill?1:1.6,fill:s.fill?s.color+"44":undefined,dash:s.dash,points:{show:false}}))]},data,div); }
+function metricCard(t,pairs){ const c=card(t),m=document.createElement("div"); m.className="metrics";
+  m.innerHTML=pairs.map(([k,v])=>`<div class="metric"><b>${v}</b><span>${k}</span></div>`).join(""); c.appendChild(m); }
+
+// ---------- nodes ----------
+function combo(n,name,val,values){ n.addWidget("combo",name,val,null,{values}); n.properties[name]=val; }
+function getW(n,name){ const w=(n.widgets||[]).find(w=>w.name===name); return w?w.value:n.properties[name]; }
+function defineNodes(){
+  function Dataset(){ this.addOutput("data","data"); this.properties={}; combo(this,"dataset",dsNames()[0],dsNames()); }
+  Dataset.title="Dataset"; LiteGraph.registerNodeType("nilm/dataset",Dataset);
+  function Appliance(){ this.addInput("data","data"); this.addOutput("series","series"); this.properties={}; combo(this,"appliance",appNames()[0],appNames()); }
+  Appliance.title="Appliance"; LiteGraph.registerNodeType("nilm/appliance",Appliance);
+  function Pretrained(){ this.addInput("series","series"); this.addOutput("result","result"); this.properties={}; combo(this,"model","Seq2Point",["Seq2Point","DAE","GRU","PatchTST","Linear","Mean"]); }
+  Pretrained.title="Pretrained (ONNX, in-browser)"; LiteGraph.registerNodeType("nilm/pretrained",Pretrained);
+  function Train(){ this.addInput("train","series"); this.addOutput("model","handle"); this.properties={};
+    combo(this,"arch","Seq2Point",["Seq2Point","DAE","GRU","PatchTST"]);
+    this.addWidget("number","epochs",6,null,{min:1,max:40,step:1,precision:0}); this.properties.epochs=6; }
+  Train.title="Train (real PyTorch)"; LiteGraph.registerNodeType("nilm/train",Train);
+  function Predict(){ this.addInput("model","handle"); this.addInput("series","series"); this.addOutput("result","result"); this.properties={}; }
+  Predict.title="Predict"; LiteGraph.registerNodeType("nilm/predict",Predict);
+  function Plot(){ this.addInput("result","result"); this.properties={}; } Plot.title="Plot"; LiteGraph.registerNodeType("nilm/plot",Plot);
+  function Metrics(){ this.addInput("result","result"); this.properties={}; } Metrics.title="Metrics"; LiteGraph.registerNodeType("nilm/metrics",Metrics);
+  function Compare(){ this.addInput("A","result"); this.addInput("B","result"); this.properties={}; } Compare.title="Compare"; LiteGraph.registerNodeType("nilm/compare",Compare);
+}
+
+// ---------- async executor ----------
+function inData(node,slot,cache){ const inp=node.inputs&&node.inputs[slot]; if(!inp||inp.link==null) return null;
+  const lk=GRAPH.links[inp.link], out=cache[lk.origin_id]; return out?out[lk.origin_slot]:null; }
+async function EXEC(node,cache){
+  const t=node.type;
+  if(t==="nilm/dataset"){ const d=DATA.datasets[getW(node,"dataset")]; return [{ds:getW(node,"dataset"),mains:d.mains,appliances:d.appliances}]; }
+  if(t==="nilm/appliance"){ const inp=inData(node,0,cache); if(!inp) throw "Appliance: connect a Dataset";
+    const app=getW(node,"appliance"); return [{ds:inp.ds,app,mains:inp.mains,truth:inp.appliances[app]||null}]; }
+  if(t==="nilm/pretrained"){ const s=inData(node,0,cache); if(!s) throw "Pretrained: connect Appliance";
+    const reg=DATA.models[s.app]||{}, key=Object.keys(reg).find(k=>k.startsWith(getW(node,"model"))); if(!key) throw `no ${getW(node,"model")} for ${s.app}`;
+    const m=reg[key], win=DATA.window; let pred;
+    if(m.type==="const") pred=new Array(s.mains.length-win+1).fill(m.value);
+    else if(m.type==="linear"){ const w=m.w,n=s.mains.length-win+1; pred=[]; for(let i=0;i<n;i++){let v=w[win];for(let j=0;j<win;j++)v+=s.mains[i+j]*w[j];pred.push(Math.max(0,v));} }
+    else pred=await onnxPred(m.file,s.mains,win);
+    const half=win>>1,n=pred.length;
+    return [{label:`${getW(node,"model")} (pretrained)`,app:s.app,ds:s.ds,mains:s.mains.slice(half,half+n),truth:s.truth?s.truth.slice(half,half+n):null,pred}]; }
+  if(t==="nilm/train"){ const s=inData(node,0,cache); if(!s) throw "Train: connect Appliance";
+    if(!SERVER) throw "Train needs the PyTorch server — run: nilmlite serve  (then open http://localhost:8000/)";
+    log(`training ${getW(node,"arch")} on ${s.ds} · ${s.app} (real PyTorch)…`);
+    const r=await api("/train",{ds:s.ds,app:s.app,arch:getW(node,"arch"),epochs:getW(node,"epochs")});
+    log(`  ✓ ${r.arch} ${r.params.toLocaleString()} params · ${r.backend.toUpperCase()} · ${r.seconds}s`);
+    return [{model_id:r.model_id,arch:r.arch,trained_on:r.trained_on,backend:r.backend}]; }
+  if(t==="nilm/predict"){ const h=inData(node,0,cache), s=inData(node,1,cache); if(!h||!s) throw "Predict: connect a trained model + Appliance";
+    const r=await api("/predict",{model_id:h.model_id,ds:s.ds,app:s.app});
+    return [{label:r.label,app:r.app,ds:r.ds,mains:r.mains,truth:r.truth,pred:r.pred,mae:r.mae,f1:r.f1}]; }
+  if(t==="nilm/plot"){ const r=inData(node,0,cache); if(!r) return []; const c=card(`Plot — ${r.app} on ${r.ds}`);
+    const series=[{label:"mains",data:r.mains,color:"#3a4a66",fill:true}]; if(r.truth) series.push({label:"true",data:r.truth,color:"#5fbf6f"});
+    series.push({label:r.label,data:r.pred,color:"#e4634f",dash:[5,4]}); plotInto(c,series); return []; }
+  if(t==="nilm/metrics"){ const r=inData(node,0,cache); if(!r) return [];
+    const pairs=r.truth?[["MAE (W)",(r.mae??mae(r.truth,r.pred)).toFixed?r.mae?.toFixed(1)??mae(r.truth,r.pred).toFixed(1):r.mae],["F1",(r.f1??f1(r.truth,r.pred,DATA.on_threshold)).toFixed?(r.f1??f1(r.truth,r.pred,DATA.on_threshold)).toFixed(3):r.f1]]:[["note","no ground truth in this dataset"]];
+    metricCard(`Metrics — ${r.label}`,pairs); return []; }
+  if(t==="nilm/compare"){ const A=inData(node,0,cache),B=inData(node,1,cache); if(!A||!B) return []; const c=card(`Compare — ${A.app} on ${A.ds}`);
+    const series=[{label:"mains",data:A.mains,color:"#3a4a66",fill:true}]; if(A.truth) series.push({label:"true",data:A.truth,color:"#5fbf6f"});
+    series.push({label:A.label,data:A.pred,color:"#e4634f",dash:[5,4]}); series.push({label:B.label,data:B.pred,color:"#4f9de4",dash:[2,3]}); plotInto(c,series);
+    const m=document.createElement("div"); m.className="metrics";
+    const am=A.truth?(A.mae??mae(A.truth,A.pred)).toFixed(1):"—", bm=B.truth?(B.mae??mae(B.truth,B.pred)).toFixed(1):"—";
+    m.innerHTML=`<div class="metric"><b>${am}</b><span>${A.label} MAE</span></div><div class="metric"><b>${bm}</b><span>${B.label} MAE</span></div>`; c.appendChild(m); return []; }
+  return [];
+}
+async function runGraph(){ const btn=document.getElementById("runbtn"); btn.disabled=true; document.getElementById("log").textContent=""; clearResults();
+  try{ const order=GRAPH.computeExecutionOrder(false,true), cache={}; for(const node of order) cache[node.id]=await EXEC(node,cache)||[]; log("✓ pipeline complete"); }
+  catch(e){ log("✗ "+e); console.error(e); } btn.disabled=false; }
+
+// ---------- samples ----------
+function add(type,x,y,setup){ const n=LiteGraph.createNode(type); n.pos=[x,y]; GRAPH.add(n); if(setup)setup(n); return n; }
+function setW(n,name,val){ const w=n.widgets.find(w=>w.name===name); if(w){w.value=val; n.properties[name]=val;} }
+function loadSample(k){ GRAPH.clear();
+  if(k===1){ const d=add("nilm/dataset",30,70,n=>setW(n,"dataset","REDD · US")); const a=add("nilm/appliance",250,70,n=>setW(n,"appliance","fridge"));
+    const p=add("nilm/pretrained",470,70,n=>setW(n,"model","Seq2Point")); const pl=add("nilm/plot",760,40),mt=add("nilm/metrics",760,180);
+    d.connect(0,a,0);a.connect(0,p,0);p.connect(0,pl,0);p.connect(0,mt,0); }
+  else if(k===2){ const d=add("nilm/dataset",30,90,n=>setW(n,"dataset","REDD · US")); const a=add("nilm/appliance",230,90,n=>setW(n,"appliance","fridge"));
+    const tr=add("nilm/train",430,40,n=>{setW(n,"arch","Seq2Point");setW(n,"epochs",6);}); const pr=add("nilm/predict",650,60);
+    const pt=add("nilm/pretrained",430,210,n=>setW(n,"model","Seq2Point")); const cmp=add("nilm/compare",880,120);
+    d.connect(0,a,0);a.connect(0,tr,0);a.connect(0,pr,1);tr.connect(0,pr,0);a.connect(0,pt,0);pr.connect(0,cmp,0);pt.connect(0,cmp,1); }
+  else { const dr=add("nilm/dataset",30,40,n=>setW(n,"dataset","REDD · US")); const ar=add("nilm/appliance",230,40,n=>setW(n,"appliance","fridge"));
+    const tr=add("nilm/train",430,40,n=>{setW(n,"arch","Seq2Point");setW(n,"epochs",6);});
+    const di=add("nilm/dataset",30,230,n=>setW(n,"dataset","iAWE · India")); const ai=add("nilm/appliance",230,230,n=>setW(n,"appliance","fridge"));
+    const pr=add("nilm/predict",660,150); const pl=add("nilm/plot",890,60),mt=add("nilm/metrics",890,210);
+    dr.connect(0,ar,0);ar.connect(0,tr,0);di.connect(0,ai,0);tr.connect(0,pr,0);ai.connect(0,pr,1);pr.connect(0,pl,0);pr.connect(0,mt,0); }
+  GRAPH.setDirtyCanvas(true,true); }
+
+function exportGraph(){ const b=new Blob([JSON.stringify(GRAPH.serialize(),null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download="nilmlite-pipeline.json"; a.click(); }
+function importGraph(file){ const r=new FileReader(); r.onload=()=>{GRAPH.configure(JSON.parse(r.result));GRAPH.setDirtyCanvas(true,true);}; r.readAsText(file); }
+
+(async()=>{
+  DATA=await (await fetch("demo_data.json?v=5")).json();
+  defineNodes(); GRAPH=new LGraph();
+  const cv=document.getElementById("graph"); cv.width=cv.clientWidth; cv.height=460;
+  LGCANVAS=new LGraphCanvas("#graph",GRAPH); LGCANVAS.background_image=null;
+  loadSample(1);
+  log("ready · "+dsNames().length+" datasets, "+appNames().length+" appliances");
+  try{ const h=await (await fetch(API+"/health")).json(); SERVER=!!(h&&h.ok);
+    document.getElementById("pill-srv").textContent="server: "+(SERVER?(h.torch?"PyTorch ready ✓":"no torch — pip install nilmlite[dl]"):"off");
+    document.getElementById("pill-srv").style.borderColor=SERVER?"#5fbf6f":"#e4634f";
+  }catch(e){ SERVER=false; document.getElementById("pill-srv").textContent="server: off (inference-only)"; }
+  document.getElementById("srvnote").innerHTML=SERVER?"":"<b style='color:var(--acc)'>Training is disabled here</b> (static page) — pretrained inference works; start the server to train.";
+})().catch(e=>{document.getElementById("log").textContent="error: "+e;console.error(e);});
+window.loadSample=loadSample;window.runGraph=runGraph;window.exportGraph=exportGraph;window.importGraph=importGraph;
+</script>
+</body></html>

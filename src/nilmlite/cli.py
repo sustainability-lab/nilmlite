@@ -40,6 +40,11 @@ def main(argv=None) -> int:
     i.add_argument("path")
     i.set_defaults(func=_info)
 
+    sv = sub.add_parser("serve", help="serve the no-code studio + real PyTorch training")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--docs", default="docs")
+    sv.set_defaults(func=lambda a: __import__("nilmlite.server", fromlist=["serve"]).serve(a.port, a.docs))
+
     args = p.parse_args(argv)
     args.func(args)
     return 0
